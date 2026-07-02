@@ -1,0 +1,173 @@
+Aeriocode Rules allow you to provide Aeriocode with system-level guidance. Think of them as a persistent way to include context and preferences for your projects or globally for every conversation.
+
+## Creating a Rule
+
+You can create a rule by clicking the `+` button in the Rules tab. This will open a new file in your IDE which you can use to write your rule.
+
+Once you save the file:
+
+-   Your rule will be stored in the `.aeriocoderules/` directory in your project (if it's a Workspace Rule)
+-   Or in the Global Rules directory (if it's a Global Rule):
+
+### Global Rules Directory Location
+
+The location of your Global Rules directory depends on your operating system:
+
+| Operating System | Default Location | Notes |
+|------------------|------------------|-------|
+| **Windows** | `Documents\Aeriocode\Rules` | Uses system Documents folder |
+| **macOS** | `~/Documents/Aeriocode/Rules` | Uses user Documents folder |
+| **Linux/WSL** | `~/Documents/Aeriocode/Rules` | May fall back to `~/Aeriocode/Rules` on some systems |
+
+> **Note for Linux/WSL users**: If you don't find your global rules in `~/Documents/Aeriocode/Rules`, check `~/Aeriocode/Rules` as the location may vary depending on your system configuration and whether the Documents directory exists.
+
+You can also have Aeriocode create a rule for you by using the [`/newrule` slash command](/features/slash-commands/new-rule) in the chat.
+
+```markdown Example Aeriocode Rule Structure [expandable]
+# Project Guidelines — Flight Control System
+
+## Documentation Requirements
+
+-   Update the Software Requirements Specification (SRS) in /docs/srs when modifying requirements
+-   Maintain the DO-178C traceability matrix in /docs/rtm for every changed requirement
+-   Keep the Interface Control Document (ICD) in sync with hardware register map changes
+-   Record all requirement changes in the Problem Report log
+
+## Architecture Decision Records
+
+Create ADRs in /docs/adr for:
+
+-   Changes to task scheduling configuration or partitioning (ARINC 653)
+-   Modifications to redundancy or voting logic
+-   New sensor integrations or communication bus interfaces (ARINC 429, MIL-STD-1553)
+-   Changes to memory allocation strategy or safety-critical heap usage
+    Follow template in /docs/adr/template.md
+
+## Code Style & Patterns
+
+-   All C code must comply with MISRA-C:2012 — use the project Polyspace configuration
+-   Use `snake_case` for functions and variables, `UPPER_SNAKE_CASE` for macros and constants
+-   Place hardware abstraction code in /hal, flight software algorithms in /fsw
+-   Follow defensive programming: all public functions must have precondition assertions
+-   Use bounded loops only — no unbounded `while(1)` in flight-critical paths
+-   Follow error handling pattern in /fsw/utils/err_handler.h
+
+## Testing Standards
+
+-   Unit tests required for all flight software modules (MC/DC coverage per DO-178C Table A-7)
+-   Hardware-in-the-loop tests for sensor integration and actuator output verification
+-   Integration tests must cover all inter-partition communication paths
+-   Regression test suite must pass before any merge to the `flight-cert` branch
+```
+
+### Key Benefits
+
+1. **Version Controlled**: The `.aeriocoderules` file becomes part of your project's source code
+2. **Team Consistency**: Ensures consistent behavior across all team members
+3. **Project-Specific**: Rules and standards tailored to each project's needs
+4. **Institutional Knowledge**: Maintains project standards and practices in code
+
+Place the `.aeriocoderules` file in your project's root directory:
+
+```
+flight-controller/
+├── .aeriocoderules
+├── fsw/                    # Flight software source
+├── hal/                    # Hardware abstraction layer
+├── sim/                    # Simulation environment
+├── tests/                  # Unit and integration tests
+└── docs/                   # ICDs, RTM, ADRs
+```
+
+Aeriocode's system prompt, on the other hand, is not user-editable.
+
+### Tips for Writing Effective Aeriocode Rules
+
+-   Be Clear and Concise: Use simple language and avoid ambiguity.
+-   Focus on Desired Outcomes: Describe the results you want, not the specific steps.
+-   Test and Iterate: Experiment to find what works best for your workflow.
+
+### .aeriocoderules/ Folder System
+
+```
+flight-controller/
+├── .aeriocoderules/              # Folder containing active rules
+│   ├── 01-misra-coding.md    # MISRA-C compliance standards
+│   ├── 02-do178c-docs.md     # DO-178C documentation requirements
+│   └── current-sprint.md     # Rules specific to current work
+├── fsw/
+├── hal/
+└── ...
+```
+
+Aeriocode automatically processes **all Markdown files** inside the `.aeriocoderules/` directory, combining them into a unified set of rules. The numeric prefixes (optional) help organize files in a logical sequence.
+
+#### Using a Rules Bank
+
+For projects with multiple contexts or teams, maintain a rules bank directory:
+
+```
+flight-controller/
+├── .aeriocoderules/              # Active rules - automatically applied
+│   ├── 01-misra-coding.md
+│   └── mission-alpha.md
+│
+├── aeriocoderules-bank/          # Repository of available but inactive rules
+│   ├── missions/               # Mission-specific rule sets
+│   │   ├── mission-alpha.md
+│   │   └── mission-beta.md
+│   ├── standards/              # Standard-specific rules
+│   │   ├── misra-c.md
+│   │   ├── do178c-dal-a.md
+│   │   └── do178c-dal-c.md
+│   └── project-types/          # Project type standards
+│       ├── flight-software.md
+│       ├── gcs-backend.md
+│       └── simulation.md
+└── ...
+```
+
+#### Benefits of the Folder Approach
+
+1. **Contextual Activation**: Copy only relevant rules from the bank to the active folder
+2. **Easier Maintenance**: Update individual rule files without affecting others
+3. **Team Flexibility**: Different team members can activate rules specific to their current task
+4. **Reduced Noise**: Keep the active ruleset focused and relevant
+
+#### Usage Examples
+
+Switch between mission configurations:
+
+```bash
+# Switch to Mission Beta
+rm .aeriocoderules/mission-alpha.md
+cp aeriocoderules-bank/missions/mission-beta.md .aeriocoderules/
+```
+
+Adapt to different certification levels:
+
+```bash
+# Switch to DO-178C DAL-A rules for flight-critical software
+cp aeriocoderules-bank/standards/do178c-dal-a.md .aeriocoderules/
+```
+
+#### Implementation Tips
+
+-   Keep individual rule files focused on specific concerns
+-   Use descriptive filenames that clearly indicate the rule's purpose
+-   Consider git-ignoring the active `.aeriocoderules/` folder while tracking the `aeriocoderules-bank/`
+-   Create team scripts to quickly activate common rule combinations
+
+The folder system transforms your Aeriocode rules from a static document into a dynamic knowledge system that adapts to your team's changing contexts and requirements.
+
+### Managing Rules with the Toggleable Popover
+
+To make managing both single `.aeriocoderules` files and the folder system even easier, Aeriocode v3.13 introduces a dedicated popover UI directly accessible from the chat interface.
+
+Located conveniently under the chat input field, this popover allows you to:
+
+-   **Instantly See Active Rules:** View which global rules (from your user settings) and workspace rules (`.aeriocoderules` file or folder contents) are currently active.
+-   **Quickly Toggle Rules:** Enable or disable specific rule files within your workspace `.aeriocoderules/` folder with a single click. This is perfect for activating context-specific rules (like `misra-coding.md` or `do178c-dal-a.md`) only when needed.
+-   **Easily Add/Manage Rules:** Quickly create a workspace `.aeriocoderules` file or folder if one doesn't exist, or add new rule files to an existing folder.
+
+This UI significantly simplifies switching contexts and managing different sets of instructions without needing to manually edit files or configurations during a conversation.

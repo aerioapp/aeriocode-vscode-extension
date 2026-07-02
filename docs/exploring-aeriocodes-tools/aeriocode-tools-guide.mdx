@@ -1,0 +1,138 @@
+---
+title: "Aeriocode Tools Reference Guide"
+---
+
+## What Can Aeriocode Do?
+
+Aeriocode is your AI-powered aerospace and engineering assistant that can:
+
+-   Edit and create source files in your flight software, simulation, or embedded projects
+-   Run terminal commands for cross-compilation, flashing, and testing
+-   Search and analyze your codebase for MISRA-C violations, dead code, and design issues
+-   Help debug and fix issues in avionics, control systems, and embedded firmware
+-   Automate repetitive tasks like generating traceability matrices and test harnesses
+-   Integrate with external tools via MCP servers (DOORS, J-Link, hardware debuggers)
+
+## First Steps
+
+1. **Start a Task**
+
+    - Type your request in the chat
+    - Example: "Create a new IMU driver module for the ICM-42688 using SPI with DMA transfers"
+
+2. **Provide Context**
+
+    - Use @ mentions to add files, folders, or URLs
+    - Example: "@file:fsw/navigation/attitude_estimator.c"
+
+3. **Review Changes**
+    - Aeriocode will show diffs before making changes
+    - You can edit or reject changes
+
+## Key Features
+
+1. **File Editing**
+
+    - Create new files
+    - Modify existing code
+    - Search and replace across files
+
+2. **Terminal Commands**
+
+    - Run cross-compilation builds (`make`, `cmake`)
+    - Flash firmware via J-Link or OpenOCD
+    - Execute hardware-in-the-loop and software-in-the-loop test suites
+
+3. **Code Analysis**
+
+    - Find and fix errors
+    - Refactor code
+    - Add documentation
+
+4. **Simulation & Analysis**
+    - Run MATLAB/Python simulation scripts
+    - Plot telemetry data and flight test results
+    - Verify control system stability margins
+
+## Available Tools
+
+For the most up-to-date implementation details, you can view the full source code in the [Aeriocode repository](https://github.com/aeriocode/aeriocode/blob/main/src/core/Aeriocode.ts).
+
+Aeriocode has access to the following tools for various tasks:
+
+1. **File Operations**
+
+    - `write_to_file`: Create or overwrite files
+    - `read_file`: Read file contents
+    - `replace_in_file`: Make targeted edits to files
+    - `search_files`: Search files using regex
+    - `list_files`: List directory contents
+
+2. **Terminal Operations**
+
+    - `execute_command`: Run CLI commands
+    - `list_code_definition_names`: List code definitions
+
+3. **MCP Tools**
+
+    - `use_mcp_tool`: Use tools from MCP servers
+    - `access_mcp_resource`: Access MCP server resources
+    - Users can create custom MCP tools that Aeriocode can then access
+    - Example: Create a weather API tool that Aeriocode can use to fetch forecasts
+
+4. **Interaction Tools**
+    - `ask_followup_question`: Ask user for clarification
+    - `attempt_completion`: Present final results
+
+Each tool has specific parameters and usage patterns. Here are some examples:
+
+-   Create a new file (write_to_file):
+
+    ```xml
+    <write_to_file>
+    <path>fsw/drivers/icm42688_spi.c</path>
+    <content>
+    /* ICM-42688 IMU SPI driver with DMA transfers */
+    </content>
+    </write_to_file>
+    ```
+
+-   Search for a pattern (search_files):
+
+    ```xml
+    <search_files>
+    <path>fsw</path>
+    <regex>float32_t\s+\w+_calc\(</regex>
+    <file_pattern>*.c</file_pattern>
+    </search_files>
+    ```
+
+-   Run a command (execute_command):
+    ```xml
+    <execute_command>
+    <command>make -C build TARGET=sil test</command>
+    <requires_approval>false</requires_approval>
+    </execute_command>
+    ```
+
+## Common Tasks
+
+1. **Create a New Module**
+
+    - "Create a new GPS NMEA parser module with support for GGA and RMC sentences"
+
+2. **Fix a Bug**
+
+    - "Fix the signed integer overflow in fsw/navigation/kalman_filter.c during the covariance update step"
+
+3. **Refactor Code**
+
+    - "Refactor the attitude_estimator.c to separate the EKF prediction and update into distinct functions for MISRA compliance"
+
+4. **Run Tests**
+    - "Run the software-in-the-loop simulation to verify the new autopilot gains"
+
+## Getting Help
+
+-   Check the documentation
+-   Provide feedback to improve Aeriocode

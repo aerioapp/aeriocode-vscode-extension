@@ -1,0 +1,141 @@
+---
+title: "Context Management"
+description: "Context is key to getting the most out of Aeriocode"
+---
+
+> 💡 **Quick Reference**
+>
+> -   Context = The information Aeriocode knows about your project
+> -   Context Window = How much information Aeriocode can hold at once
+> -   Use context files to maintain project knowledge
+> -   Reset when the context window gets full
+
+## Understanding Context & Context Windows
+
+Think of working with Aeriocode like collaborating with a thorough, proactive teammate:
+
+### How Context is Built
+
+Aeriocode actively builds context in two ways:
+
+1. **Automatic Context Gathering (i.e. Aeriocode-driven)**
+    - Proactively reads related files
+    - Explores project structure
+    - Analyzes patterns and relationships
+    - Maps dependencies and imports
+    - Asks clarifying questions
+2. **User-Guided Context**
+    - Share specific files
+    - Provide documentation
+    - Answer Aeriocode's questions
+    - Guide focus areas
+    - Share design thoughts and requirements
+
+💡 **Key Point**: Aeriocode isn't passive - it actively seeks to understand your project. You can either let it explore or guide its focus, especially in [Plan](/features/plan-and-act) mode.
+
+### Context & Context Windows
+
+Think of context like a whiteboard you and Aeriocode share:
+
+-   **Context** is all the information available:
+    -   What Aeriocode has discovered
+    -   What you've shared
+    -   Your conversation history
+    -   Project requirements
+    -   Previous decisions
+-   **Context Window** is the size of the whiteboard itself:
+    -   Measured in tokens (1 token ≈ 3/4 of an English word)
+    -   Each model has a fixed size
+    -   When the whiteboard is full, you need to erase (clear context) to write more
+
+## Understanding the Context Window Progress Bar
+
+Aeriocode provides a visual way to monitor your context window usage through a progress bar.
+
+### Reading the Bar
+
+-   ↑ shows input tokens (what you've sent to the LLM)
+-   ↓ shows output tokens (what the LLM has generated)
+-   The progress bar visualizes how much of your context window you've used
+-   The total shows your model's maximum capacity
+
+### When to Watch the Bar
+
+-   During long coding sessions
+-   When working with multiple files
+-   Before starting complex tasks
+-   When Aeriocode seems to lose context
+
+💡 **Tip**: Consider starting a fresh session when usage reaches 70-80% to maintain optimal performance.
+
+## Working with Context Files
+
+Context files help maintain understanding across sessions. They serve as documentation specifically designed to help AI assistants understand your project.
+
+#### Approaches to Context Files
+
+1. **Evergreen Project Context (i.e.** [**Memory Bank**](/prompting/aeriocode-memory-bank)**)**
+    - Living documentation that evolves with your project
+    - Updated as architecture and patterns emerge
+    - Example: The Memory Bank pattern maintains files like `techContext.md` and `systemPatterns.md`
+    - Useful for long-running projects and teams
+2. **Task-Specific Context**
+
+    - Created for specific implementation tasks
+    - Document requirements, constraints, and decisions
+    - Example:
+
+        ```markdown
+        # raim-algorithm-implementation.md
+
+        ## Requirements
+
+        -   Implement RAIM (Receiver Autonomous Integrity Monitoring) per ICAO Annex 10
+        -   Support GPS + Galileo constellation with minimum 5 satellites for fault detection
+        -   Alert limit: 556m horizontal for en-route phase, 55.6m for precision approach
+
+        ## Technical Decisions
+
+        -   Weighted least-squares residual method for fault detection
+        -   Chi-squared threshold calibrated for 10^-5/hour false alert rate
+        -   Using Eigen library for matrix operations with fixed-size allocations
+        -   All intermediate calculations in double precision per ICAO standards
+        ```
+
+3. **Knowledge Transfer Docs**
+    - Switch to plan mode and ask Aeriocode to document everything you've accomplished so far, along with the remaining steps, in a markdown file.
+    - Copy the contents of the markdown file.
+    - Start a new task using that content as context.
+
+#### Using Context Files Effectively
+
+1. **Structure and Format**
+    - Use clear, consistent organization
+    - Include relevant examples
+    - Link related concepts
+    - Keep information focused
+2. **Maintenance**
+    - Update after significant changes
+    - Version control your context files
+    - Remove outdated information
+    - Document key decisions
+
+## Practical Tips
+
+1. **Starting New Projects**
+    - Let Aeriocode explore the codebase
+    - Answer its questions about structure and patterns
+    - Consider setting up basic context files
+    - Document key design decisions
+2. **Ongoing Development**
+    - Update context files with significant changes
+    - Share relevant documentation
+    - Use Plan mode for complex discussions
+    - Start fresh sessions when needed
+3. **Team Projects**
+    - Share common context files (consider using [.aeriocoderules](/features/aeriocode-rules) files in project roots)
+    - Document architectural decisions
+    - Maintain consistent patterns
+    - Keep documentation current
+
+Remember: The goal is to help Aeriocode maintain consistent understanding of your project across sessions.

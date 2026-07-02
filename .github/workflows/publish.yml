@@ -1,0 +1,141 @@
+name: "Publish Release"
+
+on:
+    workflow_dispatch:
+        inputs:
+            release-type:
+                description: "Choose release type (release or pre-release)"
+                required: true
+                default: "release"
+                type: choice
+                options:
+                    - pre-release
+                    - release
+            tag:
+                description: "Enter existing tag to publish (e.g., v3.1.2)"
+                required: true
+                type: string
+
+permissions:
+    contents: write
+    packages: write
+    checks: write
+    pull-requests: write
+    id-token: write
+
+jobs:
+    test:
+        uses: ./.github/workflows/test.yml
+
+    publish:
+        needs: test
+        name: Publish Extension
+        runs-on: ubuntu-latest
+        environment: publish
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.inputs.tag }}
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "lts/*"
+
+            - name: Cache root dependencies
+              uses: actions/cache@v4
+              id: root-cache
+              with:
+                  path: node_modules
+                  key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+
+            - name: Cache webview-ui dependencies
+              uses: actions/cache@v4
+              id: webview-cache
+              with:
+                  path: webview-ui/node_modules
+                  key: ${{ runner.os }}-npm-webview-${{ hashFiles('webview-ui/package-lock.json') }}
+
+            - name: Install root dependencies
+              if: steps.root-cache.outputs.cache-hit != 'true'
+              run: npm ci --include=optional
+
+            - name: Install webview-ui dependencies
+              if: steps.webview-cache.outputs.cache-hit != 'true'
+              run: cd webview-ui && npm ci --include=optional
+
+            - name: Install Publishing Tools
+              run: npm install -g @vscode/vsce ovsx
+
+            - name: Get Version
+              id: get_version
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+            - name: Validate Tag
+              id: validate_tag
+              run: |
+                  TAG="${{ github.event.inputs.tag }}"
+                  echo "tag=$TAG" >> $GITHUB_OUTPUT
+                  echo "Using existing tag: $TAG"
+
+                  if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+                    echo "Error: Tag '$TAG' does not exist in the repository"
+                    exit 1
+                  fi
+
+                  echo "Tag '$TAG' validated successfully"
+
+            - name: Azure Login
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: Get Azure Access Token
+              id: azure-token
+              run: |
+                  TOKEN=$(az account get-access-token \
+                    --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+                    --query accessToken -o tsv)
+                  echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+            - name: Package Extension
+              run: |
+                  vsce package --out "aeriocode-${{ steps.get_version.outputs.version }}.vsix"
+
+            - name: Publish to VS Code Marketplace (Entra ID)
+              env:
+                  VSCODE_AAD_ACCESS_TOKEN: ${{ steps.azure-token.outputs.token }}
+                  AERIOCODE_ENVIRONMENT: production
+              run: |
+                  if [ "${{ github.event.inputs.release-type }}" = "pre-release" ]; then
+                    vsce publish --pre-release --azure-credential
+                    echo "Successfully published pre-release version ${{ steps.get_version.outputs.version }} to VS Code Marketplace"
+                  else
+                    vsce publish --azure-credential
+                    echo "Successfully published release version ${{ steps.get_version.outputs.version }} to VS Code Marketplace"
+                  fi
+
+            - name: Publish to Open VSX Registry
+              env:
+                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
+              run: |
+                  if [ "${{ github.event.inputs.release-type }}" = "pre-release" ]; then
+                    ovsx publish -p $OVSX_PAT --pre-release "aeriocode-${{ steps.get_version.outputs.version }}.vsix"
+                  else
+                    ovsx publish -p $OVSX_PAT "aeriocode-${{ steps.get_version.outputs.version }}.vsix"
+                  fi
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: ${{ steps.validate_tag.outputs.tag }}
+                  files: "*.vsix"
+                  generate_release_notes: true
+                  prerelease: ${{ github.event.inputs.release-type == 'pre-release' }}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

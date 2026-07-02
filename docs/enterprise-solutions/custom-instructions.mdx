@@ -1,0 +1,22 @@
+---
+title: "Custom Instructions"
+---
+
+## Building Custom Instructions for Teams
+
+**Creating standardized project instructions ensures that all team members work within consistent guidelines — especially critical in aerospace and safety-critical software development. Start by documenting your project's technical foundation, compliance requirements (such as DO-178C, MISRA-C, or ARINC standards), and hardware constraints, then identify which information needs to be included in the instructions. The exact scope will vary depending on your team's needs, but generally it's best to provide as much information as possible. By creating comprehensive instructions that all team members follow, you establish a shared understanding of how code should be written, tested, verified, and certified across your project, resulting in more maintainable, consistent, and certifiable software.**
+
+---
+
+Here are a few topics and examples to consider for your team's custom instructions:
+
+1. **Testing framework and specific commands**
+    - "All flight software modules must include unit tests with at least 90% branch coverage per DO-178C MC/DC requirements. Run tests using `make test TARGET=sil` before submitting any pull request. Integration tests run on the hardware-in-the-loop rig with `./scripts/run_hil_tests.sh`."
+2. **Explicit library and framework preferences**
+    - "Use our internal `libnav` library for navigation math (quaternion operations, coordinate transforms, Kalman filter primitives). Avoid raw pointer arithmetic in flight-critical paths — use the bounded-array wrappers from `libsafe_mem`. For simulation, use the Python-based `aerosim` framework with NumPy/SciPy."
+3. **Where to find documentation**
+    - "All interface control documents (ICDs) are in Confluence under 'Avionics > ICDs'. The DO-178C requirements traceability matrix is in `docs/rtm/`. For hardware register maps, refer to the board support package docs at `bsp/docs/`."
+4. **Which MCP servers to use, and for which purposes**
+    - "For requirements traceability, use the DOORS MCP server with credentials stored in 1Password under 'Avionics > DOORS'. For firmware flashing, use the J-Link MCP server which requires the debug probe connected to the target. Refer to `docs/mcp-setup.md` for configuration instructions."
+5. **Coding conventions specific to your project**
+    - "All C source files must comply with MISRA-C:2012 guidelines. Use `snake_case` for functions and variables, `UPPER_SNAKE_CASE` for macros and constants. Place hardware abstraction code in `hal/`, flight algorithms in `fsw/`, and test code in `tests/`. Always include preconditions and postconditions as assertion macros in safety-critical functions."

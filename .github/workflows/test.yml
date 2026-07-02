@@ -26,10 +26,10 @@ jobs:
                 shell: bash
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v5
               with:
                   node-version: 22
 
@@ -46,7 +46,7 @@ jobs:
 
             # Cache root dependencies - only reuse if package-lock.json exactly matches
             - name: Cache root dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               id: root-cache
               with:
                   path: node_modules
@@ -54,7 +54,7 @@ jobs:
 
             # Cache webview-ui dependencies - only reuse if package-lock.json exactly matches
             - name: Cache webview-ui dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               id: webview-cache
               with:
                   path: webview-ui/node_modules
@@ -123,7 +123,7 @@ jobs:
 
             # Save coverage reports as artifacts (workflow-scoped)
             - name: Save Coverage Reports
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v5
               # Only upload artifacts on Linux - We only need coverage from one OS
               if: runner.os == 'Linux'
               with:
@@ -154,7 +154,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
               with:
                   fetch-depth: 0 # Fetch all history for accurate comparison
 
@@ -170,13 +170,13 @@ jobs:
                   pip install requests
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v5
               with:
                   node-version: 22
 
             # Cache root dependencies - only reuse if package-lock.json exactly matches
             - name: Cache root dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               id: root-cache
               with:
                   path: node_modules
@@ -184,7 +184,7 @@ jobs:
 
             # Cache webview-ui dependencies - only reuse if package-lock.json exactly matches
             - name: Cache webview-ui dependencies
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               id: webview-cache
               with:
                   path: webview-ui/node_modules
@@ -204,7 +204,7 @@ jobs:
 
             # Download coverage artifacts from test job
             - name: Download Coverage Reports
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v5
               with:
                   name: pr-coverage-reports
                   path: . # Download to root directory to match expected paths

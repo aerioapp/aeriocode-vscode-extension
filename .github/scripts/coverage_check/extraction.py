@@ -59,7 +59,7 @@ def print_debug_output(content, coverage_type):
     else:  # webview
         # Look for the coverage table - specifically the "All files" row
         table_match = re.search(
-            r"% Coverage report from v8.*?-+\|.*?\n.*?\n(All files.*?)(?:\n[^\n]*\|)",
+            r"% Coverage report from v8.*\n-+\|.*\n.*\n(All files.*?)(?:\n[^\n]*\|)",
             content,
             re.DOTALL,
         )
@@ -150,7 +150,7 @@ def extract_coverage(file_path, coverage_type="extension"):
     if coverage_type == "extension":
         # Extract the percentage from the "Lines" row in the coverage summary
         # Pattern: Lines : xx.xx% ( xxxxxxx/xxxxxxx )
-        lines_match = re.search(r"Lines\s*:\s*(\d+\.\d+)%", content)
+        lines_match = re.search(r"Lines\s*:\s*(\d+\.?\d*)%", content)
         if lines_match:
             coverage_pct = float(lines_match.group(1))
             if verbose:
@@ -167,7 +167,7 @@ def extract_coverage(file_path, coverage_type="extension"):
         # Extract the percentage from the "% Lines" column in the "All files" row
         # Pattern: All files | xx.xx | xx.xx | xx.xx | xx.xx |
         all_files_match = re.search(
-            r"All files\s+\|\s+\d+\.\d+\s+\|\s+\d+\.\d+\s+\|\s+\d+\.\d+\s+\|\s+(\d+\.\d+)",
+            r"All files\s+\|\s+\d+\.?\d*\s+\|\s+\d+\.?\d*\s+\|\s+\d+\.?\d*\s+\|\s+(\d+\.?\d*)",
             content,
         )
         if all_files_match:

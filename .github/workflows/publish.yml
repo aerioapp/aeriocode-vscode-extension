@@ -32,8 +32,6 @@ jobs:
         name: Publish Extension
         runs-on: ubuntu-latest
         environment: publish
-        env:
-            ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
         steps:
             - uses: actions/checkout@v5

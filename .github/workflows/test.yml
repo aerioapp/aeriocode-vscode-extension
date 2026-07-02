@@ -21,8 +21,6 @@ jobs:
                 os: [ubuntu-latest, windows-latest]
         runs-on: ${{ matrix.os }}
         name: ${{ matrix.os == 'ubuntu-latest' && 'test' || format('test ({0})', matrix.os) }}
-        env:
-            ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         defaults:
             run:
                 shell: bash
@@ -33,7 +31,7 @@ jobs:
             - name: Setup Node.js environment
               uses: actions/setup-node@v5
               with:
-                  node-version: 22
+                  node-version: 24
 
             # Setup Python for coverage script
             - name: Setup Python
@@ -154,8 +152,6 @@ jobs:
         runs-on: ubuntu-latest
         # Only run on PRs to main branch
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
-        env:
-            ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         steps:
             - name: Checkout code
               uses: actions/checkout@v5
@@ -176,7 +172,7 @@ jobs:
             - name: Setup Node.js environment
               uses: actions/setup-node@v5
               with:
-                  node-version: 22
+                  node-version: 24
 
             # Cache root dependencies - only reuse if package-lock.json exactly matches
             - name: Cache root dependencies

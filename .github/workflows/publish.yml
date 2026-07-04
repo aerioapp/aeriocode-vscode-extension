@@ -96,6 +96,15 @@ jobs:
                   tenant-id: ${{ secrets.AZURE_TENANT_ID }}
                   subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+            - name: Get Managed Identity Resource ID
+              id: get_identity
+              run: |
+                  RESOURCE_ID=$(az rest -u "https://app.vssps.visualstudio.com/_apis/profile/profiles/me" --resource 499b84ac-1321-427f-aa17-267ca6975798 --query "id" -o tsv 2>&1)
+                  echo "resource_id=$RESOURCE_ID" >> $GITHUB_OUTPUT
+                  echo "=== Identity Resource ID ==="
+                  echo "$RESOURCE_ID"
+                  echo "============================"
+
             - name: Package Extension
               run: |
                   vsce package --out "aeriocode-${{ steps.get_version.outputs.version }}.vsix"

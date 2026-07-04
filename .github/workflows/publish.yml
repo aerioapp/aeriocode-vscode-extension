@@ -99,11 +99,14 @@ jobs:
             - name: Get Managed Identity Resource ID
               id: get_identity
               run: |
-                  RESOURCE_ID=$(az rest -u "https://app.vssps.visualstudio.com/_apis/profile/profiles/me" --resource 499b84ac-1321-427f-aa17-267ca6975798 --query "id" -o tsv 2>&1)
-                  echo "resource_id=$RESOURCE_ID" >> $GITHUB_OUTPUT
-                  echo "=== Identity Resource ID ==="
-                  echo "$RESOURCE_ID"
-                  echo "============================"
+                  echo "=== Full Response ==="
+                  az rest -u "https://app.vssps.visualstudio.com/_apis/profile/profiles/me" --resource 499b84ac-1321-427f-aa17-267ca6975798 2>&1 || true
+                  echo "====================="
+                  echo "=== Trying alternate resource ==="
+                  az rest -u "https://vssps.dev.azure.com/aerioapp/_apis/profile/profiles/me?api-version=7.0" --resource 499b84ac-1321-427f-aa17-267ca6975798 2>&1 || true
+                  echo "====================="
+                  echo "=== Current az account ==="
+                  az account show 2>&1 || true
 
             - name: Package Extension
               run: |

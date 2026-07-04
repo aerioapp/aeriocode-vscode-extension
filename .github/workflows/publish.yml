@@ -96,22 +96,11 @@ jobs:
                   tenant-id: ${{ secrets.AZURE_TENANT_ID }}
                   subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-            - name: Get Azure Access Token
-              id: azure-token
-              run: |
-                  TOKEN=$(az account get-access-token \
-                    --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-                    --query accessToken -o tsv)
-                  echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
             - name: Package Extension
               run: |
                   vsce package --out "aeriocode-${{ steps.get_version.outputs.version }}.vsix"
 
             - name: Publish to VS Code Marketplace (Entra ID)
-              env:
-                  VSCODE_AAD_ACCESS_TOKEN: ${{ steps.azure-token.outputs.token }}
-                  AERIOCODE_ENVIRONMENT: production
               run: |
                   if [ "${{ github.event.inputs.release-type }}" = "pre-release" ]; then
                     vsce publish --pre-release --azure-credential

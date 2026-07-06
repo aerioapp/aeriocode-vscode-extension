@@ -1,6 +1,6 @@
 {
-	"name": "AerioCode",
-	"displayName": "Aeriocode",
+	"name": "Aerio-Code",
+	"displayName": "Aerio Code",
 	"description": "AI-powered aerospace and engineering coding assistant for VS Code.",
 	"version": "0.0.1",
 	"icon": "assets/icons/icon.png",

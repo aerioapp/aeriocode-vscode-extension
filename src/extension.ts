@@ -551,7 +551,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register the openWalkthrough command handler
 	context.subscriptions.push(
 		vscode.commands.registerCommand("aeriocode.openWalkthrough", async () => {
-			await vscode.commands.executeCommand("workbench.action.openWalkthrough", "aerio.AerioCode#AeriocodeWalkthrough")
+			await vscode.commands.executeCommand("workbench.action.openWalkthrough", "aerio.Aerio-Code#AeriocodeWalkthrough")
 			telemetryService.captureButtonClick("command_openWalkthrough")
 		}),
 	)
@@ -597,7 +597,7 @@ function setupHostProvider(context: ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Aeriocode")
 	context.subscriptions.push(outputChannel)
 
-	const getCallbackUri = async () => `${vscode.env.uriScheme || "vscode"}://aerio.AerioCode`
+	const getCallbackUri = async () => `${vscode.env.uriScheme || "vscode"}://aerio.Aerio-Code`
 	HostProvider.initialize(createWebview, createDiffView, vscodeHostBridgeClient, outputChannel.appendLine, getCallbackUri)
 }
 

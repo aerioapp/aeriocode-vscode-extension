@@ -10,7 +10,7 @@
 <table>
 <tbody>
 <td align="center">
-<a href="https://marketplace.visualstudio.com/items?itemName=aerio.AerioCode" target="_blank"><strong>Download on VS Marketplace</strong></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=aerio.Aerio-Code" target="_blank"><strong>Download on VS Marketplace</strong></a>
 </td>
 <td align="center">
 <a href="https://github.com/aerioapp/aeriocode-vscode-extension/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank"><strong>Feature Requests</strong></a>
@@ -82,7 +82,7 @@ Fine-grained permission controls for file read/edit, command execution, browser 
 
 ## Getting Started
 
-1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=aerio.AerioCode)
+1. Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=aerio.Aerio-Code)
 2. Sign in with your Aerio account at [aerio.bot](https://aerio.bot)
 3. Select your AI model
 4. Start coding with natural language commands

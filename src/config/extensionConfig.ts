@@ -9,8 +9,8 @@ import * as vscode from "vscode"
  * Get the current extension ID dynamically from the extension context
  */
 export function getExtensionId(): string {
-	const extension = vscode.extensions.getExtension("aerio.AerioCode")
-	return extension?.id || "aerio.AerioCode"
+	const extension = vscode.extensions.getExtension("aerio.Aerio-Code")
+	return extension?.id || "aerio.Aerio-Code"
 }
 
 /**
@@ -85,7 +85,7 @@ export const CONTEXT_KEYS = {
  * Walkthrough IDs
  */
 export const WALKTHROUGHS = {
-	MAIN: "aerio.AerioCode#AeriocodeWalkthrough",
+	MAIN: "aerio.Aerio-Code#AeriocodeWalkthrough",
 } as const
 
 /**

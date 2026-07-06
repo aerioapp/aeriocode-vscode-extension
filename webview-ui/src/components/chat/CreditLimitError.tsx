@@ -31,7 +31,7 @@ const CreditLimitError: React.FC<CreditLimitErrorProps> = ({
 		? `${appBaseUrl || "https://app.aeriocode.bot"}/dashboard/account?tab=credits&redirect=true`
 		: `${appBaseUrl || "https://app.aeriocode.bot"}/dashboard/organization?tab=credits&redirect=true`
 
-	const callbackUrl = `${uriScheme || "vscode"}://aerio.AerioCode`
+	const callbackUrl = `${uriScheme || "vscode"}://aerio.Aerio-Code`
 	const fullPurchaseUrl = new URL(buyCreditsUrl)
 	fullPurchaseUrl.searchParams.set("callback_url", callbackUrl)
 

@@ -227,9 +227,8 @@ export abstract class WebviewProvider {
                     // Inject the client ID
                     window.aeriocodeClientId = "${this.clientId}";
                 </script>
-				<script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-				<script src="http://localhost:4083"></script>
-			</body>
+			<script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+		</body>
 		</html>
 		`
 	}

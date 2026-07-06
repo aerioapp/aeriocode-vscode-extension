@@ -514,7 +514,7 @@ class NewFileContentConstructor {
 	}
 
 	private findLastMatchingLineIndex(regx: RegExp, lineLimit: number) {
-		for (let i = lineLimit; i > 0; ) {
+		for (let i = lineLimit; i > 0;) {
 			i--
 			if (this.pendingNonStandardLines[i].match(regx)) {
 				return i

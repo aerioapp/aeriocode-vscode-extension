@@ -127,8 +127,7 @@ export async function migrateLegacyApiConfigurationToModeSpecific(context: vscod
 
 		// Get the planActSeparateModelsSetting to determine migration strategy
 		const planActSeparateModelsSetting = (await context.globalState.get("planActSeparateModelsSetting")) as
-			| boolean
-			| undefined
+			boolean | undefined
 
 		// Read legacy values directly - Aeriocode only
 		const apiProvider = await context.globalState.get("apiProvider")

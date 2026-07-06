@@ -16,6 +16,7 @@ lint:
         - ENUM_VALUE_PREFIX # enum values dont start with the enum name.
         - ENUM_ZERO_VALUE_SUFFIX # first value does not have to be UNSPECIFIED.
 
+
 # breaking:
 #   use:
 #     - WIRE_JSON # Detect changes that break the json wire format (this is the minimum recommended level.)

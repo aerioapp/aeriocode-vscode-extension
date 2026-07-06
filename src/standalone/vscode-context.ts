@@ -3,7 +3,7 @@ import os from "os"
 import { mkdirSync, readFileSync } from "fs"
 import path, { join } from "path"
 import type { Extension, ExtensionContext } from "vscode"
-import { ExtensionKind, ExtensionMode } from "vscode"
+import { EventEmitter, ExtensionKind, ExtensionMode } from "vscode"
 import { log } from "./utils"
 import { EnvironmentVariableCollection, MementoStore, readJson, SecretStore } from "./vscode-context-utils"
 import { getExtensionId } from "../config/extensionConfig"
@@ -58,6 +58,11 @@ const extensionContext: ExtensionContext = {
 
 	// TODO(sjf): Workspace state needs to be per project/workspace.
 	workspaceState: new MementoStore(path.join(DATA_DIR, "workspaceState.json")),
+
+	languageModelAccessInformation: {
+		onDidChange: new EventEmitter<void>().event,
+		canSendRequest: () => false,
+	},
 }
 
 function getPackageVersion(): string {

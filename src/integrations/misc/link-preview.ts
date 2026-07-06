@@ -96,8 +96,8 @@ export async function detectImageUrl(url: string): Promise<boolean> {
 			timeout: 3000,
 		})
 
-		const contentType = response.headers["content-type"]
-		return contentType && contentType.startsWith("image/")
+		const contentType = response.headers["content-type"] as string
+		return contentType?.startsWith("image/")
 	} catch (error) {
 		// If we can't determine, fall back to checking the file extension
 		return /\.(jpg|jpeg|png|gif|webp|bmp|svg|tiff|tif|avif)$/i.test(url)

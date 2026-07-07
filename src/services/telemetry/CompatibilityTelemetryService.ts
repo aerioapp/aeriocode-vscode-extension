@@ -5,7 +5,7 @@ import { TelemetrySetting } from "@/shared/TelemetrySetting"
 import { Mode } from "@/shared/storage/types"
 import type { TaskFeedbackType } from "@shared/WebviewMessage"
 import type { BrowserSettings } from "@shared/BrowserSettings"
-import type { AeriocodeAccountUserInfo } from "@/services/auth/AuthService"
+import { AuthService, type AeriocodeAccountUserInfo } from "@/services/auth/AuthService"
 
 /**
  * CompatibilityTelemetryService provides a PostHog-compatible interface
@@ -71,8 +71,17 @@ export class CompatibilityTelemetryService {
 	 * Identifies the accounts user
 	 * @param userInfo The user's information
 	 */
-	public identifyAccount(userInfo: AeriocodeAccountUserInfo) {
+	public async identifyAccount(userInfo: AeriocodeAccountUserInfo): Promise<void> {
 		telemetryManager.setUserId(userInfo.id)
+
+		// Set auth token for telemetry requests
+		try {
+			const authToken = await AuthService.getInstance().getAuthToken()
+			telemetryManager.setAuthToken(authToken)
+		} catch (error) {
+			console.error("Failed to get auth token for telemetry:", error)
+		}
+
 		this.capture({
 			event: "user_identified",
 			properties: {

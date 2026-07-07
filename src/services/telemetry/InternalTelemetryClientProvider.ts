@@ -4,7 +4,7 @@ import { CompatibilityTelemetryService } from "./CompatibilityTelemetryService"
 import { ErrorService } from "../error/ErrorService"
 import { FeatureFlagsService } from "../posthog/feature-flags/FeatureFlagsService"
 import { telemetryManager } from "./TelemetryManager"
-import type { AeriocodeAccountUserInfo } from "../auth/AuthService"
+import { AuthService, type AeriocodeAccountUserInfo } from "../auth/AuthService"
 
 const ENV_ID = vscode?.env?.machineId ?? process?.env?.UUID ?? uuidv4()
 
@@ -130,12 +130,20 @@ export class InternalTelemetryClientProvider {
 	 * Otherwise, it will use the DISTINCT_ID as the distinct ID.
 	 * @param userInfo The user's information
 	 */
-	public identifyAccount(userInfo?: AeriocodeAccountUserInfo, properties: Record<string, unknown> = {}): void {
+	public async identifyAccount(userInfo?: AeriocodeAccountUserInfo, properties: Record<string, unknown> = {}): Promise<void> {
 		if (!this.isTelemetryEnabled) {
 			return
 		}
 
 		if (userInfo && userInfo?.id !== this.distinctId) {
+			// Set auth token for telemetry requests
+			try {
+				const authToken = await AuthService.getInstance().getAuthToken()
+				telemetryManager.setAuthToken(authToken)
+			} catch (error) {
+				console.error("Failed to get auth token for telemetry:", error)
+			}
+
 			this.telemetry.identifyAccount(userInfo)
 			this.distinctId = userInfo.id
 		}

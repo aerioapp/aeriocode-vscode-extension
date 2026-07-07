@@ -3,6 +3,7 @@ import { version as extensionVersion } from "../../../package.json"
 import { TelemetrySetting } from "@/shared/TelemetrySetting"
 import { HostProvider } from "@/hosts/host-provider"
 import { ShowMessageType } from "@/shared/proto/host/window"
+import { aeriocodeEnvConfig } from "@/config"
 
 /**
  * InternalTelemetryService handles telemetry event tracking for the Aeriocode extension
@@ -41,6 +42,8 @@ export class InternalTelemetryService {
 	private readonly BATCH_SIZE = 50
 	/** Batch time limit (5 seconds) */
 	private readonly BATCH_TIME = 5000
+	/** Authentication token for backend requests */
+	private authToken: string | null = null
 
 	/**
 	 * Constructor
@@ -90,6 +93,13 @@ export class InternalTelemetryService {
 	 */
 	public setUserId(userId: string): void {
 		this.userId = userId || "anonymous"
+	}
+
+	/**
+	 * Set the authentication token for backend requests
+	 */
+	public setAuthToken(token: string | null): void {
+		this.authToken = token
 	}
 
 	/**
@@ -190,15 +200,20 @@ export class InternalTelemetryService {
 	 */
 	private async makeTelemetryRequest(endpoint: string, data: any): Promise<void> {
 		try {
-			// Get the backend URL from configuration
-			const config = vscode.workspace.getConfiguration("aeriocode")
-			const backendUrl = config.get<string>("backendUrl") || "https://code.aerio.bot"
+			const backendUrl = aeriocodeEnvConfig.apiBaseUrl
+
+			const headers: Record<string, string> = {
+				"Content-Type": "application/json",
+			}
+
+			// Include authentication token if available
+			if (this.authToken) {
+				headers["Authorization"] = `Bearer ${this.authToken}`
+			}
 
 			const response = await fetch(`${backendUrl}${endpoint}`, {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
+				headers,
 				body: JSON.stringify(data),
 			})
 

@@ -29,9 +29,9 @@ function getEnvironmentConfig(env: Environment): EnvironmentConfig {
 			}
 		case Environment.local:
 			return {
-				appBaseUrl: "http://localhost:9080",
-				apiBaseUrl: "http://localhost:9080",
-				mcpBaseUrl: "http://localhost:9080/v1/mcp",
+				appBaseUrl: "http://code.localhost:9080",
+				apiBaseUrl: "http://code.localhost:9080",
+				mcpBaseUrl: "http://code.localhost:9080/v1/mcp",
 			}
 		default:
 			return {

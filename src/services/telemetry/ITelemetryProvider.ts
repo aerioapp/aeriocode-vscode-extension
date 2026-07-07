@@ -7,7 +7,7 @@ export interface ITelemetryProvider {
 	readonly featureFlags: any
 
 	log(event: string, properties?: Record<string, unknown>): void
-	identifyAccount(userInfo?: AeriocodeAccountUserInfo, properties?: Record<string, unknown>): void
+	identifyAccount(userInfo?: AeriocodeAccountUserInfo, properties?: Record<string, unknown>): Promise<void>
 	toggleOptIn(optIn: boolean): void
 	getFeatureFlag(flag: string): Promise<string | boolean | undefined>
 	getFeatureFlagPayload(flag: string): Promise<any>

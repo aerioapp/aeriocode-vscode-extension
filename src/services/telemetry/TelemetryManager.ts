@@ -53,6 +53,13 @@ export class TelemetryManager {
 	}
 
 	/**
+	 * Set the authentication token for backend requests
+	 */
+	public setAuthToken(token: string | null): void {
+		this.telemetryService.setAuthToken(token)
+	}
+
+	/**
 	 * Start a new telemetry session
 	 */
 	public startNewSession(): void {

@@ -22,7 +22,7 @@ const FeatureSettingsSection = ({ renderSectionHeader }: FeatureSettingsSectionP
 	} = useExtensionState()
 
 	const handleReasoningEffortChange = (newValue: OpenaiReasoningEffort) => {
-		updateSetting("openaiReasoningEffort", newValue)
+		updateSetting("ocaReasoningEffort", newValue)
 	}
 
 	return (

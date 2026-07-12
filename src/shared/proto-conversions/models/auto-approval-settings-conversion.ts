@@ -6,7 +6,6 @@ export function convertAutoApprovalSettingsToProto(settings: AutoApprovalSetting
 	return {
 		metadata: {},
 		version: settings.version,
-		enabled: settings.enabled,
 		actions: {
 			readFiles: settings.actions.readFiles || false,
 			readFilesExternally: settings.actions.readFilesExternally || false,
@@ -17,9 +16,7 @@ export function convertAutoApprovalSettingsToProto(settings: AutoApprovalSetting
 			useBrowser: settings.actions.useBrowser || false,
 			useMcp: settings.actions.useMcp || false,
 		},
-		maxRequests: settings.maxRequests || 20,
 		enableNotifications: settings.enableNotifications || false,
-		favorites: settings.favorites || [],
 	}
 }
 
@@ -27,7 +24,7 @@ export function convertAutoApprovalSettingsToProto(settings: AutoApprovalSetting
 export function convertProtoToAutoApprovalSettings(protoSettings: AutoApprovalSettingsRequest): AutoApprovalSettings {
 	return {
 		version: protoSettings.version,
-		enabled: protoSettings.enabled,
+		enabled: true,
 		actions: {
 			readFiles: protoSettings.actions?.readFiles || false,
 			readFilesExternally: protoSettings.actions?.readFilesExternally || false,
@@ -38,8 +35,8 @@ export function convertProtoToAutoApprovalSettings(protoSettings: AutoApprovalSe
 			useBrowser: protoSettings.actions?.useBrowser || false,
 			useMcp: protoSettings.actions?.useMcp || false,
 		},
-		maxRequests: protoSettings.maxRequests || 20,
+		maxRequests: 20,
 		enableNotifications: protoSettings.enableNotifications || false,
-		favorites: protoSettings.favorites || [],
+		favorites: [],
 	}
 }

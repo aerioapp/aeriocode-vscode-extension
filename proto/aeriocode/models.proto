@@ -64,6 +64,9 @@ message OpenRouterModelInfo {
   optional ThinkingConfig thinking_config = 10;
   optional bool supports_global_endpoint = 11;
   repeated ModelTier tiers = 12;
+  optional string name = 13;
+  optional double temperature = 14;
+  optional bool supports_reasoning = 15;
 }
 
 // Shared response message for model information
@@ -152,6 +155,33 @@ message LiteLLMModelInfo {
   optional string description = 11;
   repeated ModelTier tiers = 12;
   optional double temperature = 13;
+}
+
+// Model info for OCA (OpenAI-compatible) models exposed by the OCA provider
+message OcaModelInfo {
+  optional int32 max_tokens = 1;
+  optional int32 context_window = 2;
+  optional bool supports_images = 3;
+  bool supports_prompt_cache = 4;
+  optional double input_price = 5;
+  optional double output_price = 6;
+  optional ThinkingConfig thinking_config = 7;
+  optional double cache_writes_price = 9;
+  optional double cache_reads_price = 10;
+  optional string description = 11;
+  optional double temperature = 13;
+  optional string survey_content = 14;
+  optional string survey_id = 15;
+  optional string banner = 16;
+  string model_name = 17;
+  optional bool supports_reasoning = 19;
+  repeated string reasoning_effort_options = 20;
+}
+
+// Aggregated OCA model catalog keyed by model identifier
+message OcaCompatibleModelInfo {
+  map<string, OcaModelInfo> models = 1;
+  optional string error = 2;
 }
 
 // Main ApiConfiguration message

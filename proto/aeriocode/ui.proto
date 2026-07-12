@@ -41,6 +41,9 @@ enum AeriocodeAsk {
   NEW_TASK = 13;
   CONDENSE = 14;
   REPORT_BUG = 15;
+  SUMMARIZE_TASK = 16;
+  ACT_MODE_RESPOND = 17;
+  USE_SUBAGENTS = 18;
 }
 
 // Enum for AeriocodeSay types
@@ -72,6 +75,16 @@ enum AeriocodeSay {
   CHECKPOINT_CREATED = 24;
   LOAD_MCP_DOCUMENTATION = 25;
   INFO = 26;
+  TASK_PROGRESS = 27;
+  ERROR_RETRY = 28;
+  GENERATE_EXPLANATION = 29;
+  HOOK_STATUS = 30;
+  HOOK_OUTPUT_STREAM = 31;
+  COMMAND_PERMISSION_DENIED = 32;
+  CONDITIONAL_RULES_APPLIED = 33;
+  SUBAGENT_STATUS = 34;
+  USE_SUBAGENTS_SAY = 35;
+  SUBAGENT_USAGE = 36;
 }
 
 // Enum for AeriocodeSayTool tool types
@@ -84,6 +97,7 @@ enum AeriocodeSayToolType {
   LIST_CODE_DEFINITION_NAMES = 5;
   SEARCH_FILES = 6;
   WEB_FETCH = 7;
+  FILE_DELETED = 8;
 }
 
 // Enum for browser actions
@@ -190,6 +204,11 @@ message AeriocodeApiReqInfo {
   ApiReqRetryStatus retry_status = 9;
 }
 
+message AeriocodeModelInfo {
+  string provider_id = 1;
+  string model_id = 2;
+}
+
 // Main AeriocodeMessage type
 message AeriocodeMessage {
   int64 ts = 1;
@@ -216,6 +235,11 @@ message AeriocodeMessage {
   AeriocodeAskQuestion ask_question = 20;
   AeriocodeAskNewTask ask_new_task = 21;
   AeriocodeApiReqInfo api_req_info = 22;
+  AeriocodeModelInfo model_info = 23;
+}
+
+message ShowWebviewEvent {
+  bool preserve_editor_focus = 1; // When true, webview should not steal focus from editor
 }
 
 // UiService provides methods for managing UI interactions
@@ -244,6 +268,12 @@ service UiService {
   // Subscribe to settings button clicked events
   rpc subscribeToSettingsButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
   
+  // Subscribe to worktrees button clicked events
+  rpc subscribeToWorktreesButtonClicked(EmptyRequest) returns (stream Empty);
+  
+  // Sets the terminal execution mode (vscodeTerminal or backgroundExec)
+  rpc setTerminalExecutionMode(BooleanRequest) returns (KeyValuePair);
+  
   // Subscribe to partial message updates (streaming Aeriocode messages as they're built)
   rpc subscribeToPartialMessage(EmptyRequest) returns (stream AeriocodeMessage);
   
@@ -255,6 +285,9 @@ service UiService {
   
   // Subscribe to relinquish control events
   rpc subscribeToRelinquishControl(EmptyRequest) returns (stream Empty);
+  
+  // Subscribe to show webview events
+  rpc subscribeToShowWebview(EmptyRequest) returns (stream ShowWebviewEvent);
   
   // Subscribe to focus chat input events with client ID
   rpc subscribeToFocusChatInput(StringRequest) returns (stream Empty);

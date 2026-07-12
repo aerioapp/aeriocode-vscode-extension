@@ -2,7 +2,7 @@
 	"name": "Aerio-Code",
 	"displayName": "Aerio Code",
 	"description": "AI-powered aerospace and engineering coding assistant for VS Code.",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"icon": "assets/icons/icon.png",
 	"engines": {
 		"vscode": "^1.84.0"
@@ -37,7 +37,8 @@
 	"activationEvents": [
 		"onLanguage",
 		"onStartupFinished",
-		"workspaceContains:evals.env"
+		"workspaceContains:evals.env",
+		"onUri"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
@@ -202,6 +203,41 @@
 				"command": "aeriocode.openWalkthrough",
 				"title": "Open Walkthrough",
 				"category": "Aeriocode"
+			},
+			{
+				"command": "aeriocode.jupyterGenerateCell",
+				"title": "Generate Jupyter Cell with Aeriocode",
+				"category": "Aeriocode",
+				"icon": "$(sparkle)"
+			},
+			{
+				"command": "aeriocode.jupyterExplainCell",
+				"title": "Explain Jupyter Cell with Aeriocode",
+				"category": "Aeriocode",
+				"icon": "$(question)"
+			},
+			{
+				"command": "aeriocode.jupyterImproveCell",
+				"title": "Improve Jupyter Cell with Aeriocode",
+				"category": "Aeriocode",
+				"icon": "$(lightbulb)"
+			},
+			{
+				"command": "aeriocode.reconstructTaskHistory",
+				"title": "Reconstruct Task History",
+				"category": "Aeriocode"
+			},
+			{
+				"command": "aeriocode.reviewComment.reply",
+				"title": "Reply",
+				"category": "Aeriocode",
+				"enablement": "!commentIsEmpty"
+			},
+			{
+				"command": "aeriocode.reviewComment.addToChat",
+				"title": "Add to Aeriocode Chat",
+				"category": "Aeriocode",
+				"icon": "$(link-external)"
 			}
 		],
 		"keybindings": [
@@ -224,6 +260,11 @@
 				"win": "ctrl+'",
 				"linux": "ctrl+'",
 				"when": "!editorHasSelection"
+			},
+			{
+				"command": "editor.action.submitComment",
+				"key": "enter",
+				"when": "commentEditorFocused && commentController == aeriocode-ai-review && !commentIsEmpty"
 			}
 		],
 		"menus": {
@@ -324,6 +365,43 @@
 				{
 					"command": "aeriocode.abortGitCommitMessage",
 					"when": "config.git.enabled && scmProvider == git && aeriocode.isGeneratingCommit"
+				},
+				{
+					"command": "aeriocode.reviewComment.reply",
+					"when": "false"
+				}
+			],
+			"notebook/toolbar": [
+				{
+					"command": "aeriocode.jupyterGenerateCell",
+					"group": "navigation/add@1",
+					"when": "notebookType == 'jupyter-notebook'"
+				}
+			],
+			"notebook/cell/title": [
+				{
+					"command": "aeriocode.jupyterExplainCell",
+					"group": "inline",
+					"when": "notebookType == 'jupyter-notebook'"
+				},
+				{
+					"command": "aeriocode.jupyterImproveCell",
+					"group": "inline",
+					"when": "notebookType == 'jupyter-notebook'"
+				}
+			],
+			"comments/commentThread/context": [
+				{
+					"command": "aeriocode.reviewComment.reply",
+					"group": "inline",
+					"when": "commentController == aeriocode-ai-review"
+				}
+			],
+			"comments/commentThread/title": [
+				{
+					"command": "aeriocode.reviewComment.addToChat",
+					"group": "inline",
+					"when": "commentController == aeriocode-ai-review"
 				}
 			]
 		},
@@ -381,6 +459,7 @@
 	"devDependencies": {
 		"@bufbuild/buf": "^1.54.0",
 		"@changesets/cli": "^2.27.12",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/chai": "^5.0.1",
 		"@types/clone-deep": "^4.0.4",
 		"@types/diff": "^5.2.1",
@@ -388,11 +467,13 @@
 		"@types/mocha": "^10.0.7",
 		"@types/node": "20.x",
 		"@types/pdf-parse": "^1.1.4",
+		"@types/picomatch": "^4.0.2",
 		"@types/proxyquire": "^1.3.31",
 		"@types/should": "^11.2.0",
-		"@types/sinon": "^17.0.4",
+		"@types/shell-quote": "^1.7.5",
+		"@types/sinon": "^21.0.0",
 		"@types/turndown": "^5.0.5",
-		"@types/vscode": "^1.84.0",
+		"@types/vscode": "1.84.0",
 		"@typescript-eslint/eslint-plugin": "^7.14.1",
 		"@typescript-eslint/parser": "^7.18.0",
 		"@typescript-eslint/utils": "^8.33.0",
@@ -402,6 +483,7 @@
 		"chai": "^4.3.10",
 		"chalk": "^5.3.0",
 		"cross-env": "^10.1.0",
+		"dotenv": "^17.2.3",
 		"esbuild": "^0.25.0",
 		"eslint": "^8.57.0",
 		"eslint-plugin-eslint-rules": "file:eslint-rules",
@@ -416,43 +498,47 @@
 		"rimraf": "^6.0.1",
 		"should": "^13.2.3",
 		"sinon": "^19.0.2",
+		"tree-kill": "^1.2.2",
 		"ts-node": "^10.9.2",
 		"ts-proto": "^2.6.1",
 		"tsconfig-paths": "^4.2.0",
 		"typescript": "^5.4.5"
 	},
 	"dependencies": {
-		"@anthropic-ai/sdk": "^0.37.0",
-		"@anthropic-ai/vertex-sdk": "^0.6.4",
-		"@aws-sdk/client-bedrock-runtime": "^3.840.0",
-		"@aws-sdk/credential-providers": "^3.840.0",
+		"@anthropic-ai/sdk": "^0.50.4",
+		"@anthropic-ai/vertex-sdk": "^0.11.5",
+		"@aws-sdk/client-bedrock-runtime": "^3.922.0",
+		"@aws-sdk/credential-providers": "^3.922.0",
+		"@azure/identity": "^4.13.0",
 		"@bufbuild/protobuf": "^2.2.5",
 		"@cerebras/cerebras_cloud_sdk": "^1.35.0",
 		"@google-cloud/vertexai": "^1.9.3",
-		"@google/genai": "1.0.0",
+		"@google/genai": "^1.30.0",
 		"@grpc/grpc-js": "^1.9.15",
 		"@grpc/reflection": "^1.0.4",
 		"@mistralai/mistralai": "^1.5.0",
-		"@modelcontextprotocol/sdk": "^1.11.1",
-		"@opentelemetry/api": "^1.4.1",
-		"@opentelemetry/exporter-trace-otlp-http": "^0.39.1",
+		"@modelcontextprotocol/sdk": "^1.25.1",
+		"@opentelemetry/api": "^1.9.0",
+		"@opentelemetry/exporter-trace-otlp-http": "^0.56.0",
 		"@opentelemetry/resources": "^1.30.1",
-		"@opentelemetry/sdk-node": "^0.39.1",
+		"@opentelemetry/sdk-node": "^0.56.0",
 		"@opentelemetry/sdk-trace-node": "^1.30.1",
-		"@opentelemetry/semantic-conventions": "^1.30.0",
-		"@playwright/test": "^1.53.2",
+		"@opentelemetry/semantic-conventions": "^1.37.0",
+		"@playwright/test": "^1.55.1",
 		"@sentry/browser": "^9.12.0",
 		"@streamparser/json": "^0.0.22",
 		"@types/uuid": "^10.0.0",
 		"@vscode/codicons": "^0.0.36",
 		"archiver": "^7.0.1",
-		"axios": "^1.8.2",
+		"aws4fetch": "^1.0.20",
+		"axios": "1.16.1",
+		"better-sqlite3": "^12.4.1",
 		"cheerio": "^1.0.0",
 		"chokidar": "^4.0.1",
 		"chrome-launcher": "^1.1.2",
 		"clone-deep": "^4.0.1",
 		"default-shell": "^2.2.0",
-		"diff": "^5.2.0",
+		"diff": "8.0.4",
 		"exceljs": "^4.4.0",
 		"execa": "^9.5.2",
 		"fast-deep-equal": "^3.1.3",
@@ -466,34 +552,52 @@
 		"image-size": "^2.0.2",
 		"isbinaryfile": "^5.0.2",
 		"jschardet": "^3.1.4",
+		"json5": "^2.2.3",
 		"jwt-decode": "^4.0.0",
-		"mammoth": "^1.8.0",
+		"mammoth": "^1.11.0",
 		"monaco-vscode-textmate-theme-converter": "^0.1.7",
+		"nanoid": "^5.1.6",
 		"nice-grpc": "^2.1.12",
+		"node-machine-id": "^1.1.12",
 		"ollama": "^0.5.13",
 		"open": "^10.1.2",
 		"open-graph-scraper": "^6.9.0",
-		"openai": "^4.83.0",
+		"openai": "^6.21.0",
 		"os-name": "^6.0.0",
+		"p-mutex": "^1.0.0",
 		"p-timeout": "^6.1.4",
 		"p-wait-for": "^5.0.2",
 		"pdf-parse": "^1.1.1",
-		"posthog-node": "^4.8.1",
+		"picomatch": "^4.0.3",
+		"posthog-node": "^5.8.0",
 		"puppeteer": "^24.21.0",
 		"puppeteer-chromium-resolver": "^23.0.0",
-		"puppeteer-core": "^23.11.1",
+		"puppeteer-core": "^23.4.0",
 		"reconnecting-eventsource": "^1.6.4",
 		"serialize-error": "^11.0.3",
-		"simple-git": "^3.27.0",
-		"strip-ansi": "^7.1.0",
+		"shell-quote": "^1.8.3",
+		"simple-git": "3.36.0",
+		"strip-ansi": "^7.1.2",
+		"tailwindcss": "^4.1.14",
+		"@tailwindcss/vite": "^4.1.14",
 		"tree-sitter-wasms": "^0.1.11",
 		"ts-morph": "^25.0.1",
 		"turndown": "^7.2.0",
 		"ulid": "^2.4.0",
+		"undici": "^7.26.0",
 		"upath": "^2.0.1",
 		"uuid": "^11.1.0",
 		"vscode-uri": "^3.1.0",
 		"web-tree-sitter": "^0.22.6",
 		"zod": "^3.24.2"
+	},
+	"overrides": {
+		"tar-fs": ">=3.1.1",
+		"tar": "^7.5.2",
+		"vite": "^7.1.11",
+		"js-yaml": "^4.1.1",
+		"serialize-javascript": ">=7.0.3",
+		"protobufjs": "7.5.8",
+		"diff": "8.0.4"
 	}
 }

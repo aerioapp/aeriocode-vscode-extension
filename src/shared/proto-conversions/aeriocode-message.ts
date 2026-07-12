@@ -34,6 +34,9 @@ function convertAeriocodeAskToProtoEnum(ask: AppAeriocodeAsk | undefined): Aerio
 		new_task: AeriocodeAsk.NEW_TASK,
 		condense: AeriocodeAsk.CONDENSE,
 		report_bug: AeriocodeAsk.REPORT_BUG,
+		summarize_task: AeriocodeAsk.SUMMARIZE_TASK,
+		act_mode_respond: AeriocodeAsk.ACT_MODE_RESPOND,
+		use_subagents: AeriocodeAsk.USE_SUBAGENTS,
 	}
 
 	const result = mapping[ask]
@@ -67,6 +70,9 @@ function convertProtoEnumToAeriocodeAsk(ask: AeriocodeAsk): AppAeriocodeAsk | un
 		[AeriocodeAsk.NEW_TASK]: "new_task",
 		[AeriocodeAsk.CONDENSE]: "condense",
 		[AeriocodeAsk.REPORT_BUG]: "report_bug",
+		[AeriocodeAsk.SUMMARIZE_TASK]: "summarize_task",
+		[AeriocodeAsk.ACT_MODE_RESPOND]: "act_mode_respond",
+		[AeriocodeAsk.USE_SUBAGENTS]: "use_subagents",
 	}
 
 	return mapping[ask]
@@ -106,6 +112,16 @@ function convertAeriocodeSayToProtoEnum(say: AppAeriocodeSay | undefined): Aerio
 		checkpoint_created: AeriocodeSay.CHECKPOINT_CREATED,
 		load_mcp_documentation: AeriocodeSay.LOAD_MCP_DOCUMENTATION,
 		info: AeriocodeSay.INFO,
+		task_progress: AeriocodeSay.TASK_PROGRESS,
+		error_retry: AeriocodeSay.ERROR_RETRY,
+		generate_explanation: AeriocodeSay.GENERATE_EXPLANATION,
+		hook_status: AeriocodeSay.HOOK_STATUS,
+		hook_output_stream: AeriocodeSay.HOOK_OUTPUT_STREAM,
+		command_permission_denied: AeriocodeSay.COMMAND_PERMISSION_DENIED,
+		conditional_rules_applied: AeriocodeSay.CONDITIONAL_RULES_APPLIED,
+		subagent_status: AeriocodeSay.SUBAGENT_STATUS,
+		use_subagents: AeriocodeSay.USE_SUBAGENTS_SAY,
+		subagent_usage: AeriocodeSay.SUBAGENT_USAGE,
 	}
 
 	const result = mapping[say]
@@ -150,6 +166,16 @@ function convertProtoEnumToAeriocodeSay(say: AeriocodeSay): AppAeriocodeSay | un
 		[AeriocodeSay.CHECKPOINT_CREATED]: "checkpoint_created",
 		[AeriocodeSay.LOAD_MCP_DOCUMENTATION]: "load_mcp_documentation",
 		[AeriocodeSay.INFO]: "info",
+		[AeriocodeSay.TASK_PROGRESS]: "task_progress",
+		[AeriocodeSay.ERROR_RETRY]: "error_retry",
+		[AeriocodeSay.GENERATE_EXPLANATION]: "generate_explanation",
+		[AeriocodeSay.HOOK_STATUS]: "hook_status",
+		[AeriocodeSay.HOOK_OUTPUT_STREAM]: "hook_output_stream",
+		[AeriocodeSay.COMMAND_PERMISSION_DENIED]: "command_permission_denied",
+		[AeriocodeSay.CONDITIONAL_RULES_APPLIED]: "conditional_rules_applied",
+		[AeriocodeSay.SUBAGENT_STATUS]: "subagent_status",
+		[AeriocodeSay.USE_SUBAGENTS_SAY]: "use_subagents",
+		[AeriocodeSay.SUBAGENT_USAGE]: "subagent_usage",
 	}
 
 	return mapping[say]

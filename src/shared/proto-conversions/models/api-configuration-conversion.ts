@@ -1,6 +1,5 @@
 import { ApiConfiguration, ApiProvider } from "@shared/api"
 import { ModelsApiConfiguration, ApiProvider as ProtoApiProvider } from "@shared/proto/aeriocode/models"
-import { ApiConfiguration as StateApiConfiguration } from "@shared/proto/aeriocode/state"
 
 /**
  * Converts API configuration to proto format (simplified for Aeriocode only)
@@ -57,7 +56,7 @@ export function convertApiConfigurationFromProto(protoConfig: ModelsApiConfigura
  * @param protoConfig The State proto API configuration
  * @returns API configuration
  */
-export function convertStateApiConfigurationFromProto(protoConfig: StateApiConfiguration): ApiConfiguration {
+export function convertStateApiConfigurationFromProto(protoConfig: ModelsApiConfiguration): ApiConfiguration {
 	return {
 		// Only include Aeriocode-specific fields
 		aeriocodeAccountId: protoConfig.aeriocodeAccountId,

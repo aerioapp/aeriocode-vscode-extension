@@ -42,6 +42,26 @@ service AccountService {
 
   // Fetches current user profile data
   rpc getUserProfile(EmptyRequest) returns (UserProfileResponse);
+
+  rpc openrouterAuthClicked(EmptyRequest) returns (Empty);
+
+  rpc requestyAuthClicked(StringRequest) returns (Empty);
+
+  rpc hicapAuthClicked(EmptyRequest) returns (Empty);
+
+  // Returns a link the webview can use to redirect back to the user's IDE.
+  rpc getRedirectUrl(EmptyRequest) returns (String);
+
+  // OpenAI Codex OAuth authentication
+  // Starts the OAuth flow and opens browser for user to sign in with ChatGPT Plus/Pro
+  rpc openAiCodexSignIn(EmptyRequest) returns (Empty);
+
+  // Signs out of OpenAI Codex and clears stored credentials
+  rpc openAiCodexSignOut(EmptyRequest) returns (Empty);
+
+  // Submits a spend limit increase request to the user's org admin.
+  // Called when the user hits a SPEND_LIMIT_EXCEEDED (429) error and clicks "Request Increase".
+  rpc submitLimitIncreaseRequest(EmptyRequest) returns (SubmitLimitIncreaseResponse);
 }
 
 message AuthStateChangedRequest {
@@ -112,6 +132,12 @@ message UsageTransaction {
   int32 prompt_tokens = 10;
   int32 total_tokens = 11;
   string user_id = 12;
+  string operation = 13;
+}
+
+// Response from a spend limit increase request submission
+message SubmitLimitIncreaseResponse {
+  bool success = 1;
 }
 
 message PaymentTransaction {
@@ -119,6 +145,7 @@ message PaymentTransaction {
   string creator_id = 2;
   int32 amount_cents = 3;
   double credits = 4;
+  string operation = 5;
 }
 
 message OrganizationUsageTransaction {
@@ -134,6 +161,7 @@ message OrganizationUsageTransaction {
   int32 prompt_tokens = 10;
   int32 total_tokens = 11;
   string user_id = 12;
+  string operation = 13;
 }
 
 message UsageStatsResponse {

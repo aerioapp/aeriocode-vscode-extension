@@ -53,7 +53,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			const runPromise = process.run(terminal, "echo test")
 
 			// If terminal doesn't have shell integration, advance timer
-			if (!terminal.shellIntegration) {
+			if (!(terminal as any).shellIntegration) {
 				await sandbox.clock.tickAsync(3000)
 			}
 
@@ -76,7 +76,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			const runPromise = process.run(terminal, "echo 'Line 1' && echo 'Line 2'")
 
 			// If terminal doesn't have shell integration, advance timer
-			if (!terminal.shellIntegration) {
+			if (!(terminal as any).shellIntegration) {
 				await sandbox.clock.tickAsync(3000)
 			}
 
@@ -99,7 +99,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			const runPromise = process.run(terminal, "ls -la")
 
 			// If terminal doesn't have shell integration, advance timer
-			if (!terminal.shellIntegration) {
+			if (!(terminal as any).shellIntegration) {
 				await sandbox.clock.tickAsync(3000)
 			}
 
@@ -144,7 +144,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			const runPromise = process.run(terminal, "echo 'Line 1' 'Line 2'")
 
 			// If terminal doesn't have shell integration, advance timer
-			if (!terminal.shellIntegration) {
+			if (!(terminal as any).shellIntegration) {
 				await sandbox.clock.tickAsync(3000)
 			}
 
@@ -167,7 +167,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			const runPromise = process.run(terminal, "echo \"Line 1\" && echo 'Line 2'")
 
 			// If terminal doesn't have shell integration, advance timer
-			if (!terminal.shellIntegration) {
+			if (!(terminal as any).shellIntegration) {
 				await sandbox.clock.tickAsync(3000)
 			}
 
@@ -186,7 +186,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 		createdTerminals.push(terminal)
 
 		// Stub the shellIntegration getter to return undefined for this test
-		sandbox.stub(terminal, "shellIntegration").get(() => undefined)
+		sandbox.stub(terminal as any, "shellIntegration").get(() => undefined)
 
 		// Stub the sendText method to verify it's called
 		const sendTextStub = sandbox.stub(terminal, "sendText")
@@ -230,8 +230,8 @@ describe("TerminalProcess (Integration Tests)", () => {
 				executeCommand: mockExecuteCommand,
 			}
 
-			// Stub terminal.shellIntegration to return our mock
-			sandbox.stub(terminal, "shellIntegration").get(() => mockShellIntegration)
+			// Stub (terminal as any).shellIntegration to return our mock
+			sandbox.stub(terminal as any, "shellIntegration").get(() => mockShellIntegration)
 
 			// Spy on emit to verify behavior
 			const emitSpy = sandbox.spy(process, "emit")
@@ -261,7 +261,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			})
 
 			// Create a mock shell integration object and stub the getter
-			sandbox.stub(terminal, "shellIntegration").get(() => ({
+			sandbox.stub(terminal as any, "shellIntegration").get(() => ({
 				executeCommand: mockExecuteCommand,
 			}))
 
@@ -286,7 +286,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			})
 
 			// Create a mock shell integration object and stub the getter
-			sandbox.stub(terminal, "shellIntegration").get(() => ({
+			sandbox.stub(terminal as any, "shellIntegration").get(() => ({
 				executeCommand: mockExecuteCommand,
 			}))
 
@@ -314,7 +314,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			})
 
 			// Create a mock shell integration object and stub the getter
-			sandbox.stub(terminal, "shellIntegration").get(() => ({
+			sandbox.stub(terminal as any, "shellIntegration").get(() => ({
 				executeCommand: mockExecuteCommand,
 			}))
 
@@ -349,7 +349,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			})
 
 			// Create a mock shell integration object and stub the getter
-			sandbox.stub(terminal, "shellIntegration").get(() => ({
+			sandbox.stub(terminal as any, "shellIntegration").get(() => ({
 				executeCommand: mockExecuteCommand,
 			}))
 
@@ -375,7 +375,7 @@ describe("TerminalProcess (Integration Tests)", () => {
 			})
 
 			// Create a mock shell integration object and stub the getter
-			sandbox.stub(terminal, "shellIntegration").get(() => ({
+			sandbox.stub(terminal as any, "shellIntegration").get(() => ({
 				executeCommand: mockExecuteCommand,
 			}))
 

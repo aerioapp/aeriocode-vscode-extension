@@ -38,8 +38,8 @@ export class TerminalProcess extends EventEmitter<TerminalProcessEvents> {
 			}
 		}
 
-		if (terminal.shellIntegration && terminal.shellIntegration.executeCommand) {
-			const execution = terminal.shellIntegration.executeCommand(command)
+		if ((terminal as any).shellIntegration && (terminal as any).shellIntegration.executeCommand) {
+			const execution = (terminal as any).shellIntegration.executeCommand(command)
 			const stream = execution.read()
 			// todo: need to handle errors
 			let isFirstChunk = true

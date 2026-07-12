@@ -11,7 +11,6 @@ import { StringArrayRequest, StringRequest } from "@shared/proto/aeriocode/commo
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 import React, { memo, useEffect, useMemo, useRef, useState } from "react"
 import { useWindowSize } from "react-use"
-import TaskTimeline from "./TaskTimeline"
 import DeleteTaskButton from "./buttons/DeleteTaskButton"
 import CopyTaskButton from "./buttons/CopyTaskButton"
 import OpenDiskTaskHistoryButton from "./buttons/OpenDiskTaskHistoryButton"
@@ -460,10 +459,7 @@ const TaskHeader: React.FC<TaskHeaderProps> = ({
 									</div>
 								</div>
 							)}
-							<div className="flex flex-col">
-								<TaskTimeline messages={aeriocodeMessages} onBlockClick={onScrollToMessage} />
-								{ContextWindowComponent}
-							</div>
+							<div className="flex flex-col">{ContextWindowComponent}</div>
 							{checkpointTrackerErrorMessage && (
 								<div
 									style={{

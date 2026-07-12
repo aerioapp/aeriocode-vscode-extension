@@ -31,7 +31,7 @@ const extension: Extension<void> = {
 	extensionKind: ExtensionKind.UI,
 }
 
-const extensionContext: ExtensionContext = {
+const extensionContext: any = {
 	extension: extension,
 	extensionMode: EXTENSION_MODE,
 
@@ -58,11 +58,11 @@ const extensionContext: ExtensionContext = {
 
 	// TODO(sjf): Workspace state needs to be per project/workspace.
 	workspaceState: new MementoStore(path.join(DATA_DIR, "workspaceState.json")),
+} as any
 
-	languageModelAccessInformation: {
-		onDidChange: new EventEmitter<void>().event,
-		canSendRequest: () => false,
-	},
+extensionContext.languageModelAccessInformation = {
+	onDidChange: new EventEmitter<void>().event,
+	canSendRequest: () => false,
 }
 
 function getPackageVersion(): string {

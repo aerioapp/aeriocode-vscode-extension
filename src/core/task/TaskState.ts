@@ -57,4 +57,7 @@ export class TaskState {
 	abort: boolean = false
 	didFinishAbortingStream = false
 	abandoned = false
+
+	// File read cache for tracking file reads
+	fileReadCache = new Map<string, string>()
 }

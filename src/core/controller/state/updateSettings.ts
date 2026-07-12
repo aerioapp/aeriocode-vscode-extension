@@ -64,11 +64,11 @@ export async function updateSettings(controller: Controller, request: UpdateSett
 			await controller.context.globalState.update("mode", request.mode)
 		}
 
-		if (request.openaiReasoningEffort !== undefined) {
+		if (request.ocaReasoningEffort !== undefined) {
 			if (controller.task) {
-				controller.task.openaiReasoningEffort = request.openaiReasoningEffort as OpenaiReasoningEffort
+				controller.task.openaiReasoningEffort = request.ocaReasoningEffort as OpenaiReasoningEffort
 			}
-			await controller.context.globalState.update("openaiReasoningEffort", request.openaiReasoningEffort)
+			await controller.context.globalState.update("openaiReasoningEffort", request.ocaReasoningEffort)
 		}
 
 		if (request.preferredLanguage !== undefined) {

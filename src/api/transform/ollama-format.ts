@@ -40,7 +40,9 @@ export function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.Me
 							toolMessage.content
 								?.map((part) => {
 									if (part.type === "image") {
-										toolResultImages.push(`data:${part.source.media_type};base64,${part.source.data}`)
+										toolResultImages.push(
+											`data:${(part.source as any).media_type};base64,${(part.source as any).data}`,
+										)
 										return "(see following user message for image)"
 									}
 									return part.text
@@ -61,7 +63,7 @@ export function convertToOllamaMessages(anthropicMessages: Anthropic.Messages.Me
 						content: nonToolMessages
 							.map((part) => {
 								if (part.type === "image") {
-									return `data:${part.source.media_type};base64,${part.source.data}`
+									return `data:${(part.source as any).media_type};base64,${(part.source as any).data}`
 								}
 								return part.text
 							})

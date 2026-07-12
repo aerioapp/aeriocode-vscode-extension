@@ -229,6 +229,8 @@ export class ToolExecutor {
 				return `[${block.name} for '${block.params.path}']`
 			case "web_fetch":
 				return `[${block.name} for '${block.params.url}']`
+			default:
+				return `[${block.name}]`
 		}
 	}
 

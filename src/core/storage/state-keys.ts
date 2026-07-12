@@ -31,6 +31,7 @@ export type SecretKey =
 	| "groqApiKey"
 	| "huaweiCloudMaasApiKey"
 	| "basetenApiKey"
+	| "mcpOAuthSecrets"
 
 export type GlobalStateKey =
 	| "awsRegion"
@@ -148,6 +149,7 @@ export type GlobalStateKey =
 	| "actModeHuggingFaceModelInfo"
 	| "actModeHuaweiCloudMaasModelId"
 	| "actModeHuaweiCloudMaasModelInfo"
+	| "dismissedBanners"
 
 export type LocalStateKey =
 	"localAeriocodeRulesToggles" | "localCursorRulesToggles" | "localWindsurfRulesToggles" | "workflowToggles"

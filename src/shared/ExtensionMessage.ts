@@ -100,6 +100,9 @@ export type AeriocodeAsk =
 	| "new_task"
 	| "condense"
 	| "report_bug"
+	| "summarize_task"
+	| "act_mode_respond"
+	| "use_subagents"
 
 export type AeriocodeSay =
 	| "task"
@@ -128,12 +131,23 @@ export type AeriocodeSay =
 	| "aeriocodeignore_error"
 	| "checkpoint_created"
 	| "load_mcp_documentation"
-	| "info" // Added for general informational messages like retry status
+	| "info"
+	| "task_progress"
+	| "error_retry"
+	| "generate_explanation"
+	| "hook_status"
+	| "hook_output_stream"
+	| "command_permission_denied"
+	| "conditional_rules_applied"
+	| "subagent_status"
+	| "use_subagents"
+	| "subagent_usage"
 
 export interface AeriocodeSayTool {
 	tool:
 		| "editedExistingFile"
 		| "newFileCreated"
+		| "fileDeleted"
 		| "readFile"
 		| "listFilesTopLevel"
 		| "listFilesRecursive"
@@ -146,6 +160,7 @@ export interface AeriocodeSayTool {
 	regex?: string
 	filePattern?: string
 	operationIsLocatedInWorkspace?: boolean
+	startLineNumbers?: number[]
 }
 
 // must keep in sync with system prompt
@@ -209,3 +224,11 @@ export interface AeriocodeApiReqInfo {
 export type AeriocodeApiReqCancelReason = "streaming_failed" | "user_cancelled" | "retries_exhausted"
 
 export const COMPLETION_RESULT_CHANGES_FLAG = "HAS_CHANGES"
+
+export interface AeriocodeSayGenerateExplanation {
+	title: string
+	fromRef: string
+	toRef: string
+	status: "generating" | "complete" | "error"
+	error?: string
+}

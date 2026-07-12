@@ -28,6 +28,10 @@ export const toolUseNames = [
 	"report_bug",
 	"new_rule",
 	"web_fetch",
+	// New tools for Phase 2
+	"apply_patch",
+	"web_search",
+	"generate_explanation",
 ] as const
 
 // Converts array of tool call names into a union type ("execute_command" | "read_file" | ...)
@@ -61,6 +65,13 @@ export const toolParamNames = [
 	"api_request_output",
 	"additional_context",
 	"needs_more_exploration",
+	// New tool params for Phase 2 tools
+	"input",
+	"query",
+	"allowed_domains",
+	"blocked_domains",
+	"from_ref",
+	"to_ref",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]

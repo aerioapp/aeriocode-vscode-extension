@@ -29,6 +29,7 @@ export function convertToAnthropicMessage(): Anthropic.Messages.Message {
 			output_tokens: 0,
 			cache_creation_input_tokens: null,
 			cache_read_input_tokens: null,
+			server_tool_use: null,
 		},
 	}
 }

@@ -136,7 +136,7 @@ export class TerminalManager {
 			return false
 		}
 
-		const currentCwd = terminalInfo.terminal.shellIntegration?.cwd?.fsPath
+		const currentCwd = (terminalInfo.terminal as any).shellIntegration?.cwd?.fsPath
 		const targetCwd = vscode.Uri.file(terminalInfo.pendingCwdChange).fsPath
 
 		if (!currentCwd) {
@@ -180,7 +180,7 @@ export class TerminalManager {
 		})
 
 		// if shell integration is already active, run the command immediately
-		if (terminalInfo.terminal.shellIntegration) {
+		if ((terminalInfo.terminal as any).shellIntegration) {
 			process.waitForShellIntegration = false
 			process.run(terminalInfo.terminal, command)
 		} else {
@@ -188,7 +188,7 @@ export class TerminalManager {
 			console.log(
 				`[TerminalManager Test] Waiting for shell integration for terminal ${terminalInfo.id} with timeout ${this.shellIntegrationTimeout}ms`,
 			)
-			pWaitFor(() => terminalInfo.terminal.shellIntegration !== undefined, {
+			pWaitFor(() => (terminalInfo.terminal as any).shellIntegration !== undefined, {
 				timeout: this.shellIntegrationTimeout,
 			})
 				.then(() => {
@@ -232,7 +232,7 @@ export class TerminalManager {
 			if (t.shellPath !== expectedShellPath) {
 				return false
 			}
-			const terminalCwd = t.terminal.shellIntegration?.cwd // one of aeriocode's commands could have changed the cwd of the terminal
+			const terminalCwd = (t.terminal as any).shellIntegration?.cwd // one of aeriocode's commands could have changed the cwd of the terminal
 			if (!terminalCwd) {
 				console.log(`[TerminalManager] Terminal ${t.id} has no cwd, skipping`)
 				return false

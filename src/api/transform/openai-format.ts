@@ -89,7 +89,7 @@ export function convertToOpenAiMessages(
 								return {
 									type: "image_url",
 									image_url: {
-										url: `data:${part.source.media_type};base64,${part.source.data}`,
+										url: `data:${(part.source as any).media_type};base64,${(part.source as any).data}`,
 									},
 								}
 							}
@@ -184,6 +184,7 @@ export function convertToAnthropicMessage(completion: OpenAI.Chat.Completions.Ch
 			output_tokens: completion.usage?.completion_tokens || 0,
 			cache_creation_input_tokens: null,
 			cache_read_input_tokens: null,
+			server_tool_use: null,
 		},
 	}
 
@@ -191,15 +192,16 @@ export function convertToAnthropicMessage(completion: OpenAI.Chat.Completions.Ch
 		anthropicMessage.content.push(
 			...openAiMessage.tool_calls.map((toolCall): Anthropic.ToolUseBlock => {
 				let parsedInput = {}
+				const fn = (toolCall as any).function
 				try {
-					parsedInput = JSON.parse(toolCall.function.arguments || "{}")
+					parsedInput = JSON.parse(fn.arguments || "{}")
 				} catch (error) {
 					console.error("Failed to parse tool arguments:", error)
 				}
 				return {
 					type: "tool_use",
 					id: toolCall.id,
-					name: toolCall.function.name,
+					name: fn.name,
 					input: parsedInput,
 				}
 			}),

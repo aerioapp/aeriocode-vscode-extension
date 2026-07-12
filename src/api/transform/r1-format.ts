@@ -28,7 +28,7 @@ export function convertToR1Format(messages: Anthropic.Messages.MessageParam[]): 
 					hasImages = true
 					imageParts.push({
 						type: "image_url",
-						image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` },
+						image_url: { url: `data:${(part.source as any).media_type};base64,${(part.source as any).data}` },
 					})
 				}
 			})

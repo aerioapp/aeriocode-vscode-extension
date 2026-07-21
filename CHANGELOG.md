@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.5
+
+### Patch Changes
+
+- d2efbf3: Adding safety guard for workspace root
+- d2efbf3: calibrate input token counts when using anthropic models of sap ai core provider
+
 ## [0.0.4]
 
 ### Certification System

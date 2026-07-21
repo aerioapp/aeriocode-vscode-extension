@@ -97,4 +97,4 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) to get s
 
 ## License
 
-[Apache 2.0 © 2026 Aerio](./LICENSE)
+[Aerio Code License © 2026 Aerio](./LICENSE) — source-available, not open source. See [LICENSE](./LICENSE) for redistribution terms.

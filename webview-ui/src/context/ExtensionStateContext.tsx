@@ -16,6 +16,7 @@ import { convertProtoMcpServersToMcpServers } from "@shared/proto-conversions/mc
 import type { ModelInfo } from "../../../src/shared/api"
 import type { McpMarketplaceCatalog, McpServer, McpViewTab } from "../../../src/shared/mcp"
 import {
+	CertificationServiceClient,
 	FileServiceClient,
 	McpServiceClient,
 	ModelsServiceClient,
@@ -42,7 +43,16 @@ interface ExtensionStateContextType extends ExtensionState {
 	showSettings: boolean
 	showHistory: boolean
 	showAccount: boolean
+	showTraceability: boolean
+	showAuditTrail: boolean
+	showProfileSetup: boolean
 	showAnnouncement: boolean
+
+	// Certification state
+	certificationActive: boolean
+	certificationProfile: string
+	certificationLevel: string
+	refreshCertificationStatus: () => void
 
 	// Setters
 	setShowAnnouncement: (value: boolean) => void
@@ -71,11 +81,17 @@ interface ExtensionStateContextType extends ExtensionState {
 	navigateToHistory: () => void
 	navigateToAccount: () => void
 	navigateToChat: () => void
+	navigateToTraceability: () => void
+	navigateToAuditTrail: () => void
+	navigateToProfileSetup: () => void
 
 	// Hide functions
 	hideSettings: () => void
 	hideHistory: () => void
 	hideAccount: () => void
+	hideTraceability: () => void
+	hideAuditTrail: () => void
+	hideProfileSetup: () => void
 	hideAnnouncement: () => void
 	closeMcpView: () => void
 
@@ -97,6 +113,9 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [showSettings, setShowSettings] = useState(false)
 	const [showHistory, setShowHistory] = useState(false)
 	const [showAccount, setShowAccount] = useState(false)
+	const [showTraceability, setShowTraceability] = useState(false)
+	const [showAuditTrail, setShowAuditTrail] = useState(false)
+	const [showProfileSetup, setShowProfileSetup] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 
 	// Helper for MCP view
@@ -110,6 +129,9 @@ export const ExtensionStateContextProvider: React.FC<{
 	const hideHistory = useCallback(() => setShowHistory(false), [setShowHistory])
 	const hideAccount = useCallback(() => setShowAccount(false), [setShowAccount])
 	const hideAnnouncement = useCallback(() => setShowAnnouncement(false), [setShowAnnouncement])
+	const hideTraceability = useCallback(() => setShowTraceability(false), [setShowTraceability])
+	const hideAuditTrail = useCallback(() => setShowAuditTrail(false), [setShowAuditTrail])
+	const hideProfileSetup = useCallback(() => setShowProfileSetup(false), [setShowProfileSetup])
 
 	// Navigation functions
 	const navigateToMcp = useCallback(
@@ -151,7 +173,72 @@ export const ExtensionStateContextProvider: React.FC<{
 		closeMcpView()
 		setShowHistory(false)
 		setShowAccount(false)
-	}, [setShowSettings, closeMcpView, setShowHistory, setShowAccount])
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+	])
+
+	const navigateToTraceability = useCallback(() => {
+		setShowSettings(false)
+		closeMcpView()
+		setShowHistory(false)
+		setShowAccount(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowTraceability(true)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowTraceability,
+	])
+
+	const navigateToAuditTrail = useCallback(() => {
+		setShowSettings(false)
+		closeMcpView()
+		setShowHistory(false)
+		setShowAccount(false)
+		setShowTraceability(false)
+		setShowProfileSetup(false)
+		setShowAuditTrail(true)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowTraceability,
+		setShowProfileSetup,
+		setShowAuditTrail,
+	])
+
+	const navigateToProfileSetup = useCallback(() => {
+		setShowSettings(false)
+		closeMcpView()
+		setShowHistory(false)
+		setShowAccount(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(true)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+	])
 
 	const [state, setState] = useState<ExtensionState>({
 		version: "",
@@ -196,6 +283,25 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [mcpServers, setMcpServers] = useState<McpServer[]>([])
 	const [mcpMarketplaceCatalog, setMcpMarketplaceCatalog] = useState<McpMarketplaceCatalog>({ items: [] })
 
+	// Certification state
+	const [certificationActive, setCertificationActive] = useState(false)
+	const [certificationProfile, setCertificationProfile] = useState("")
+	const [certificationLevel, setCertificationLevel] = useState("")
+
+	const refreshCertificationStatus = useCallback(async () => {
+		try {
+			const response = await CertificationServiceClient.getCertificationStatus(EmptyRequest.create({}))
+			setCertificationActive(response.active)
+			setCertificationProfile(response.profileStandard)
+			setCertificationLevel(response.profileLevel)
+		} catch (error) {
+			console.error("[Certification] Failed to get status:", error)
+			setCertificationActive(false)
+			setCertificationProfile("")
+			setCertificationLevel("")
+		}
+	}, [])
+
 	// References to store subscription cancellation functions
 	const stateSubscriptionRef = useRef<(() => void) | null>(null)
 
@@ -212,6 +318,10 @@ export const ExtensionStateContextProvider: React.FC<{
 	const openRouterModelsUnsubscribeRef = useRef<(() => void) | null>(null)
 	const workspaceUpdatesUnsubscribeRef = useRef<(() => void) | null>(null)
 	const relinquishControlUnsubscribeRef = useRef<(() => void) | null>(null)
+
+	// Certification button subscription refs
+	const traceabilityButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
+	const auditTrailButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 
 	// Add ref for callbacks
 	const relinquishControlCallbacks = useRef<Set<() => void>>(new Set())
@@ -384,6 +494,42 @@ export const ExtensionStateContextProvider: React.FC<{
 			},
 		)
 
+		// Set up traceability button clicked subscription
+		traceabilityButtonClickedSubscriptionRef.current = UiServiceClient.subscribeToTraceabilityButtonClicked(
+			WebviewProviderTypeRequest.create({
+				providerType: currentProviderType,
+			}),
+			{
+				onResponse: () => {
+					navigateToTraceability()
+				},
+				onError: (error) => {
+					console.error("Error in traceability button clicked subscription:", error)
+				},
+				onComplete: () => {
+					console.log("Traceability button clicked subscription completed")
+				},
+			},
+		)
+
+		// Set up audit trail button clicked subscription
+		auditTrailButtonClickedSubscriptionRef.current = UiServiceClient.subscribeToAuditTrailButtonClicked(
+			WebviewProviderTypeRequest.create({
+				providerType: currentProviderType,
+			}),
+			{
+				onResponse: () => {
+					navigateToAuditTrail()
+				},
+				onError: (error) => {
+					console.error("Error in audit trail button clicked subscription:", error)
+				},
+				onComplete: () => {
+					console.log("Audit trail button clicked subscription completed")
+				},
+			},
+		)
+
 		// Subscribe to partial message events
 		partialMessageUnsubscribeRef.current = UiServiceClient.subscribeToPartialMessage(EmptyRequest.create({}), {
 			onResponse: (protoMessage) => {
@@ -499,6 +645,9 @@ export const ExtensionStateContextProvider: React.FC<{
 				console.error("Failed to fetch available terminal profiles:", error)
 			})
 
+		// Fetch initial certification status
+		refreshCertificationStatus()
+
 		// Subscribe to relinquish control events
 		relinquishControlUnsubscribeRef.current = UiServiceClient.subscribeToRelinquishControl(EmptyRequest.create({}), {
 			onResponse: () => {
@@ -554,6 +703,14 @@ export const ExtensionStateContextProvider: React.FC<{
 			if (settingsButtonClickedSubscriptionRef.current) {
 				settingsButtonClickedSubscriptionRef.current()
 				settingsButtonClickedSubscriptionRef.current = null
+			}
+			if (traceabilityButtonClickedSubscriptionRef.current) {
+				traceabilityButtonClickedSubscriptionRef.current()
+				traceabilityButtonClickedSubscriptionRef.current = null
+			}
+			if (auditTrailButtonClickedSubscriptionRef.current) {
+				auditTrailButtonClickedSubscriptionRef.current()
+				auditTrailButtonClickedSubscriptionRef.current = null
 			}
 			if (partialMessageUnsubscribeRef.current) {
 				partialMessageUnsubscribeRef.current()
@@ -615,7 +772,14 @@ export const ExtensionStateContextProvider: React.FC<{
 		showSettings,
 		showHistory,
 		showAccount,
+		showTraceability,
+		showAuditTrail,
+		showProfileSetup,
 		showAnnouncement,
+		certificationActive,
+		certificationProfile,
+		certificationLevel,
+		refreshCertificationStatus,
 		globalAeriocodeRulesToggles: state.globalAeriocodeRulesToggles || {},
 		localAeriocodeRulesToggles: state.localAeriocodeRulesToggles || {},
 		localCursorRulesToggles: state.localCursorRulesToggles || {},
@@ -630,11 +794,17 @@ export const ExtensionStateContextProvider: React.FC<{
 		navigateToHistory,
 		navigateToAccount,
 		navigateToChat,
+		navigateToTraceability,
+		navigateToAuditTrail,
+		navigateToProfileSetup,
 
 		// Hide functions
 		hideSettings,
 		hideHistory,
 		hideAccount,
+		hideTraceability,
+		hideAuditTrail,
+		hideProfileSetup,
 		hideAnnouncement,
 		setShowAnnouncement,
 		setShouldShowAnnouncement: (value) =>

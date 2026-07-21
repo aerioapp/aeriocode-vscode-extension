@@ -33,6 +33,7 @@ import { getAllExtensionState, getGlobalState, updateGlobalState } from "../stor
 import { Task } from "../task"
 import { sendMcpMarketplaceCatalogEvent } from "./mcp/subscribeToMcpMarketplaceCatalog"
 import { sendStateUpdate } from "./state/subscribeToState"
+import { CertificationManager } from "@/certification"
 import { sendAddToInputEvent, sendAddToInputEventToClient } from "./ui/subscribeToAddToInput"
 import { WebviewProvider } from "../webview"
 
@@ -244,6 +245,21 @@ export class Controller {
 			files,
 			historyItem,
 		)
+
+		// Record AI generation start for certification audit trail
+		try {
+			const certManager = CertificationManager.getInstance()
+			if (certManager.getStatus().active && this.task?.taskId) {
+				await certManager.onAIGenerationStarted({
+					generation_id: this.task.taskId,
+					model_id: apiConfiguration.actModeApiModelId || "unknown",
+					user_message: task?.substring(0, 2000) || undefined,
+				})
+			}
+		} catch (certError) {
+			// Certification is optional - don't break the main flow
+			console.debug("Certification generation tracking skipped:", certError)
+		}
 	}
 
 	async reinitExistingTaskFromId(taskId: string) {
@@ -711,6 +727,23 @@ export class Controller {
 			welcomeViewCompleted: welcomeViewCompleted as boolean, // Can be undefined but is set to either true or false by the migration that runs on extension launch in extension.ts
 			mcpResponsesCollapsed,
 			terminalOutputLineLimit,
+			...(() => {
+				try {
+					const certManager = CertificationManager.getInstance()
+					const status = certManager.getStatus()
+					return {
+						certificationActive: status.active,
+						certificationProfile: certManager.getActiveProfile()?.standard || undefined,
+						certificationLevel: certManager.getActiveProfileLevel() || undefined,
+					}
+				} catch {
+					return {
+						certificationActive: false,
+						certificationProfile: undefined,
+						certificationLevel: undefined,
+					}
+				}
+			})(),
 		}
 	}
 

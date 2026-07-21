@@ -12,8 +12,32 @@ const McpServerIcon = ({ className, size }: { className?: string; size?: number 
 	/>
 )
 
+// Custom Link Icon using VSCode codicon
+const TraceabilityIcon = ({ className, size }: { className?: string; size?: number }) => (
+	<span
+		className={`codicon codicon-link flex items-center ${className || ""}`}
+		style={{ fontSize: size ? `${size}px` : "12.5px", marginBottom: "1px" }}
+	/>
+)
+
+// Custom Audit Icon using VSCode codicon
+const AuditIcon = ({ className, size }: { className?: string; size?: number }) => (
+	<span
+		className={`codicon codicon-history flex items-center ${className || ""}`}
+		style={{ fontSize: size ? `${size}px` : "12.5px", marginBottom: "1px" }}
+	/>
+)
+
 export const Navbar = () => {
-	const { navigateToHistory, navigateToSettings, navigateToAccount, navigateToMcp, navigateToChat } = useExtensionState()
+	const {
+		navigateToHistory,
+		navigateToSettings,
+		navigateToAccount,
+		navigateToMcp,
+		navigateToChat,
+		navigateToTraceability,
+		navigateToAuditTrail,
+	} = useExtensionState()
 
 	const SETTINGS_TABS = useMemo(
 		() => [
@@ -30,6 +54,20 @@ export const Navbar = () => {
 				tooltip: "MCP Servers",
 				icon: McpServerIcon,
 				navigate: navigateToMcp,
+			},
+			{
+				id: "traceability",
+				name: "Traceability",
+				tooltip: "Traceability Matrix",
+				icon: TraceabilityIcon,
+				navigate: navigateToTraceability,
+			},
+			{
+				id: "audit",
+				name: "Audit",
+				tooltip: "Audit Trail",
+				icon: AuditIcon,
+				navigate: navigateToAuditTrail,
 			},
 			{
 				id: "history",
@@ -53,7 +91,15 @@ export const Navbar = () => {
 				navigate: navigateToSettings,
 			},
 		],
-		[navigateToAccount, navigateToChat, navigateToHistory, navigateToMcp, navigateToSettings],
+		[
+			navigateToAccount,
+			navigateToChat,
+			navigateToHistory,
+			navigateToMcp,
+			navigateToSettings,
+			navigateToTraceability,
+			navigateToAuditTrail,
+		],
 	)
 
 	return (

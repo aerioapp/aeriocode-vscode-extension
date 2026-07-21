@@ -4,13 +4,24 @@ import { StateServiceClient } from "@/services/grpc-client"
 import { ExtensionMessage } from "@shared/ExtensionMessage"
 import { ResetStateRequest } from "@shared/proto/aeriocode/state"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
-import { CheckCheck, FlaskConical, Info, LucideIcon, Settings, SquareMousePointer, SquareTerminal, Webhook } from "lucide-react"
+import {
+	CheckCheck,
+	FlaskConical,
+	Info,
+	LucideIcon,
+	Settings,
+	SquareMousePointer,
+	SquareTerminal,
+	Webhook,
+	Shield,
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useEvent } from "react-use"
 import { Tab, TabContent, TabHeader, TabList, TabTrigger } from "../common/Tab"
 import FeatureSettingsSection from "./sections/FeatureSettingsSection"
 import SectionHeader from "./SectionHeader"
 import TerminalSettingsSection from "./sections/TerminalSettingsSection"
+import CertificationSettingsSection from "./sections/CertificationSettingsSection"
 import ApiConfigurationSection from "./sections/ApiConfigurationSection"
 import GeneralSettingsSection from "./sections/GeneralSettingsSection"
 import BrowserSettingsSection from "./sections/BrowserSettingsSection"
@@ -72,6 +83,13 @@ export const SETTINGS_TABS: SettingsTab[] = [
 		tooltipText: "Terminal Settings",
 		headerText: "Terminal Settings",
 		icon: SquareTerminal,
+	},
+	{
+		id: "certification",
+		name: "Certification",
+		tooltipText: "Certification Settings",
+		headerText: "Certification Settings",
+		icon: Shield,
 	},
 	// Only show in dev mode
 	...(IS_DEV
@@ -297,6 +315,11 @@ const SettingsView = ({ onDone, targetSection }: SettingsViewProps) => {
 
 							{/* Terminal Settings Tab */}
 							{activeTab === "terminal" && <TerminalSettingsSection renderSectionHeader={renderSectionHeader} />}
+
+							{/* Certification Settings Tab */}
+							{activeTab === "certification" && (
+								<CertificationSettingsSection renderSectionHeader={renderSectionHeader} />
+							)}
 
 							{/* Debug Tab (only in dev mode) */}
 							{IS_DEV && activeTab === "debug" && (

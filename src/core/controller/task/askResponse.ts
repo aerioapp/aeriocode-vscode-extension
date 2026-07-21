@@ -2,6 +2,7 @@ import { Controller } from ".."
 import { Empty } from "@shared/proto/aeriocode/common"
 import { AskResponseRequest } from "@shared/proto/aeriocode/task"
 import { AeriocodeAskResponse } from "../../../shared/WebviewMessage"
+import { CertificationManager } from "@/certification"
 
 /**
  * Handles a response from the webview for a previous ask operation
@@ -32,6 +33,26 @@ export async function askResponse(controller: Controller, request: AskResponseRe
 			default:
 				console.warn(`askResponse: Unknown response type: ${request.responseType}`)
 				return Empty.create()
+		}
+
+		// Capture human decision for certification audit trail
+		// Only capture for approval/rejection decisions (not message responses)
+		if (responseType === "yesButtonClicked" || responseType === "noButtonClicked") {
+			try {
+				const certManager = CertificationManager.getInstance()
+				if (certManager.getStatus().active && controller.task?.taskId) {
+					const decision = responseType === "yesButtonClicked" ? "accepted" : "rejected"
+					await certManager.onHumanDecision({
+						generation_id: controller.task.taskId,
+						user_id: controller.id,
+						decision,
+						rationale: request.text || undefined,
+					})
+				}
+			} catch (certError) {
+				// Certification is optional - don't break the main flow
+				console.debug("Certification decision capture skipped:", certError)
+			}
 		}
 
 		// Call the task's handler for webview responses

@@ -1,6 +1,8 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { ApiHandler, buildApiHandler } from "@api/index"
 import { AeriocodeHandler } from "@api/providers/aeriocode"
+import { CertificationManager } from "@/certification"
+import { CertificationInstructionsBuilder } from "@/certification/CertificationInstructionsBuilder"
 import { ApiStream } from "@api/transform/stream"
 import { DIFF_VIEW_URI_SCHEME } from "@hosts/vscode/VscodeDiffViewProvider"
 import CheckpointTracker from "@integrations/checkpoints/CheckpointTracker"
@@ -1039,7 +1041,7 @@ export class Task {
 				relPath ? ` for '${relPath.toPosix()}'` : ""
 			} without value for required parameter '${paramName}'. Retrying...`,
 		)
-		return formatResponse.toolError(formatResponse.missingToolParameterError(paramName))
+		return formatResponse.toolError(formatResponse.missingToolParameterError(paramName, toolName))
 	}
 
 	async removeLastPartialMessageIfExistsWithType(type: "ask" | "say", askOrSay: AeriocodeAsk | AeriocodeSay) {
@@ -1761,7 +1763,7 @@ export class Task {
 		}
 
 		// Collect all user instructions locally in the extension
-		const userInstructions = addUserInstructions(
+		let userInstructions = addUserInstructions(
 			globalAeriocodeRulesFileInstructions,
 			localAeriocodeRulesFileInstructions,
 			localCursorRulesFileInstructions,
@@ -1770,6 +1772,25 @@ export class Task {
 			aeriocodeIgnoreInstructions,
 			preferredLanguageInstructions,
 		)
+
+		// Inject certification requirements into user instructions
+		try {
+			const certManager = CertificationManager.getInstance()
+			const certStatus = certManager.getStatus()
+			if (certStatus.active && certStatus.profile) {
+				const db = certManager.getProjectDb()
+				if (db) {
+					const requirements = db.getAllRequirements()
+					const certInstructions = CertificationInstructionsBuilder.build(certStatus.profile, requirements)
+					if (certInstructions) {
+						const certBlock = `\n====\n\nCERTIFICATION REQUIREMENTS\n\n${certInstructions}`
+						userInstructions = certBlock + (userInstructions ? `\n\n${userInstructions}` : "")
+					}
+				}
+			}
+		} catch (certError) {
+			console.debug("Certification instructions injection skipped:", certError)
+		}
 
 		// Pass user instructions and context to backend for system prompt generation
 		if (this.api instanceof AeriocodeHandler) {

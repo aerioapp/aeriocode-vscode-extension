@@ -2,7 +2,7 @@
 	"name": "Aerio-Code",
 	"displayName": "Aerio Code",
 	"description": "AI-powered aerospace and engineering coding assistant for VS Code.",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"icon": "assets/icons/icon.png",
 	"engines": {
 		"vscode": "^1.84.0"
@@ -10,7 +10,7 @@
 	"author": {
 		"name": "Aerio"
 	},
-	"license": "Apache-2.0",
+	"license": "SEE LICENSE IN LICENSE",
 	"publisher": "aerio",
 	"repository": {
 		"type": "git",
@@ -152,6 +152,16 @@
 				"icon": "$(settings-gear)"
 			},
 			{
+				"command": "aeriocode.traceabilityButtonClicked",
+				"title": "Traceability",
+				"icon": "$(checklist)"
+			},
+			{
+				"command": "aeriocode.auditTrailButtonClicked",
+				"title": "Audit Trail",
+				"icon": "$(shield)"
+			},
+			{
 				"command": "aeriocode.openInNewTab",
 				"title": "Open In New Tab",
 				"category": "Aeriocode"
@@ -285,18 +295,28 @@
 					"when": "view == aeriocode.SidebarProvider"
 				},
 				{
-					"command": "aeriocode.popoutButtonClicked",
+					"command": "aeriocode.traceabilityButtonClicked",
 					"group": "navigation@4",
+					"when": "view == aeriocode.SidebarProvider && aeriocode.certificationActive"
+				},
+				{
+					"command": "aeriocode.auditTrailButtonClicked",
+					"group": "navigation@5",
+					"when": "view == aeriocode.SidebarProvider && aeriocode.certificationActive"
+				},
+				{
+					"command": "aeriocode.popoutButtonClicked",
+					"group": "navigation@6",
 					"when": "view == aeriocode.SidebarProvider"
 				},
 				{
 					"command": "aeriocode.accountButtonClicked",
-					"group": "navigation@5",
+					"group": "navigation@7",
 					"when": "view == aeriocode.SidebarProvider"
 				},
 				{
 					"command": "aeriocode.settingsButtonClicked",
-					"group": "navigation@6",
+					"group": "navigation@8",
 					"when": "view == aeriocode.SidebarProvider"
 				}
 			],
@@ -317,18 +337,28 @@
 					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				},
 				{
-					"command": "aeriocode.popoutButtonClicked",
+					"command": "aeriocode.traceabilityButtonClicked",
 					"group": "navigation@4",
+					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider && aeriocode.certificationActive"
+				},
+				{
+					"command": "aeriocode.auditTrailButtonClicked",
+					"group": "navigation@5",
+					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider && aeriocode.certificationActive"
+				},
+				{
+					"command": "aeriocode.popoutButtonClicked",
+					"group": "navigation@6",
 					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				},
 				{
 					"command": "aeriocode.accountButtonClicked",
-					"group": "navigation@5",
+					"group": "navigation@7",
 					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				},
 				{
 					"command": "aeriocode.settingsButtonClicked",
-					"group": "navigation@6",
+					"group": "navigation@8",
 					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				}
 			],
@@ -459,7 +489,6 @@
 	"devDependencies": {
 		"@bufbuild/buf": "^1.54.0",
 		"@changesets/cli": "^2.27.12",
-		"@types/better-sqlite3": "^7.6.13",
 		"@types/chai": "^5.0.1",
 		"@types/clone-deep": "^4.0.4",
 		"@types/diff": "^5.2.1",
@@ -469,8 +498,8 @@
 		"@types/pdf-parse": "^1.1.4",
 		"@types/picomatch": "^4.0.2",
 		"@types/proxyquire": "^1.3.31",
-		"@types/should": "^11.2.0",
 		"@types/shell-quote": "^1.7.5",
+		"@types/should": "^11.2.0",
 		"@types/sinon": "^21.0.0",
 		"@types/turndown": "^5.0.5",
 		"@types/vscode": "1.84.0",
@@ -527,12 +556,12 @@
 		"@playwright/test": "^1.55.1",
 		"@sentry/browser": "^9.12.0",
 		"@streamparser/json": "^0.0.22",
+		"@tailwindcss/vite": "^4.1.14",
 		"@types/uuid": "^10.0.0",
 		"@vscode/codicons": "^0.0.36",
 		"archiver": "^7.0.1",
 		"aws4fetch": "^1.0.20",
 		"axios": "1.16.1",
-		"better-sqlite3": "^12.4.1",
 		"cheerio": "^1.0.0",
 		"chokidar": "^4.0.1",
 		"chrome-launcher": "^1.1.2",
@@ -577,9 +606,9 @@
 		"serialize-error": "^11.0.3",
 		"shell-quote": "^1.8.3",
 		"simple-git": "3.36.0",
+		"sql.js": "^1.14.1",
 		"strip-ansi": "^7.1.2",
 		"tailwindcss": "^4.1.14",
-		"@tailwindcss/vite": "^4.1.14",
 		"tree-sitter-wasms": "^0.1.11",
 		"ts-morph": "^25.0.1",
 		"turndown": "^7.2.0",

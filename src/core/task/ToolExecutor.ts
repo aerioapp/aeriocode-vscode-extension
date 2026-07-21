@@ -6,6 +6,7 @@ import { parseSourceCodeForDefinitionsTopLevel } from "@/services/tree-sitter"
 import { findLast, findLastIndex, parsePartialArrayString } from "@/shared/array"
 import { createAndOpenGitHubIssue } from "@/utils/github-url-utils"
 import { getReadablePath, isLocatedInWorkspace } from "@/utils/path"
+import { CertificationManager } from "@/certification"
 import Anthropic from "@anthropic-ai/sdk"
 import { ApiHandler } from "@api/index"
 import { FileContextTracker } from "@core/context/context-tracking/FileContextTracker"
@@ -764,6 +765,9 @@ export class ToolExecutor {
 						const { newProblemsMessage, userEdits, autoFormattingEdits, finalContent } =
 							await this.diffViewProvider.saveChanges()
 						this.taskState.didEditFile = true // used to determine if we should wait for busy terminal to update before sending api request
+
+						// Track file for certification audit trail
+						this.taskState.filesWrittenDuringGeneration.push(relPath)
 
 						// Track file edit operation
 						await this.fileContextTracker.trackFileContext(relPath, "aeriocode_edited")
@@ -2369,6 +2373,19 @@ export class ToolExecutor {
 								await this.saveCheckpoint(true)
 								await addNewChangesFlagToLastCompletionResultMessage()
 								telemetryService.captureTaskCompleted(this.taskId, this.ulid)
+
+								// Record AI generation completion for certification audit trail
+								try {
+									const certManager = CertificationManager.getInstance()
+									if (certManager.getStatus().active) {
+										await certManager.onAIGenerationCompleted(this.taskId, [
+											...this.taskState.filesWrittenDuringGeneration,
+										])
+									}
+								} catch (certError) {
+									console.debug("Certification generation tracking skipped:", certError)
+								}
+								this.taskState.filesWrittenDuringGeneration = []
 							} else {
 								// we already sent a command message, meaning the complete completion message has also been sent
 								await this.saveCheckpoint(true)
@@ -2407,6 +2424,20 @@ export class ToolExecutor {
 							await this.saveCheckpoint(true)
 							await addNewChangesFlagToLastCompletionResultMessage()
 							telemetryService.captureTaskCompleted(this.taskId, this.ulid)
+
+							// Record AI generation completion for certification audit trail
+							try {
+								const certManager = CertificationManager.getInstance()
+								if (certManager.getStatus().active) {
+									await certManager.onAIGenerationCompleted(this.taskId, [
+										...this.taskState.filesWrittenDuringGeneration,
+									])
+								}
+							} catch (certError) {
+								console.debug("Certification generation tracking skipped:", certError)
+							}
+							this.taskState.filesWrittenDuringGeneration = []
+
 							await this.say("user_feedback", text ?? "", images, completionFiles)
 							await this.saveCheckpoint()
 

@@ -1,0 +1,309 @@
+syntax = "proto3";
+
+package aeriocode;
+import "aeriocode/common.proto";
+option java_package = "bot.aeriocode.proto";
+option java_multiple_files = true;
+
+// CertificationService - manages certification profiles, requirements, traceability, and audit trail
+service CertificationService {
+  // Profile management
+  rpc getCertificationStatus(EmptyRequest) returns (CertificationStatusResponse);
+  rpc activateProfile(ActivateProfileRequest) returns (Empty);
+  rpc deactivateProfile(EmptyRequest) returns (Empty);
+  rpc deleteProjectData(EmptyRequest) returns (Empty);
+  rpc getAvailableProfiles(EmptyRequest) returns (AvailableProfilesResponse);
+  
+  // Requirements
+  rpc getRequirements(EmptyRequest) returns (RequirementsResponse);
+  rpc addRequirement(AddRequirementRequest) returns (RequirementResponse);
+  rpc updateRequirement(UpdateRequirementRequest) returns (Empty);
+  rpc deleteRequirement(StringRequest) returns (Empty);
+  
+  // Traceability
+  rpc getTraceabilityMatrix(EmptyRequest) returns (TraceabilityMatrixResponse);
+  rpc getTraceabilityLinks(StringRequest) returns (TraceabilityLinksResponse);
+  rpc addTraceLink(AddTraceLinkRequest) returns (TraceLinkResponse);
+  rpc deleteTraceLink(Int64Request) returns (Empty);
+  rpc getUntracedCode(EmptyRequest) returns (UntracedCodeResponse);
+  rpc getImpactAnalysis(GetImpactAnalysisRequest) returns (ImpactAnalysisResponse);
+  
+  // Audit trail
+  rpc getAuditEntries(AuditQueryRequest) returns (AuditEntriesResponse);
+  rpc verifyIntegrity(EmptyRequest) returns (IntegrityResponse);
+  rpc getDecisionStats(EmptyRequest) returns (DecisionStatsResponse);
+  rpc getGenerationHistory(AuditQueryRequest) returns (GenerationHistoryResponse);
+  
+  // Export
+  rpc exportTraceabilityMatrix(ExportRequest) returns (ExportResponse);
+  rpc exportAuditLog(ExportRequest) returns (ExportResponse);
+  rpc exportVerificationPackage(EmptyRequest) returns (ExportResponse);
+  
+  // Real-time updates (streaming)
+  rpc subscribeToCertificationUpdates(EmptyRequest) returns (stream CertificationUpdate);
+}
+
+// --- Profile Messages ---
+
+message CertificationStatusResponse {
+  bool active = 1;
+  string profile_standard = 2;
+  string profile_level = 3;
+  int32 traced_count = 4;
+  int32 untraced_count = 5;
+  int32 coverage_percent = 6;
+  string last_audit_entry = 7;
+  string integrity_status = 8;
+  CoverageEnforcement enforcement = 9;
+}
+
+message CoverageEnforcement {
+  int32 requirements_met = 1;
+  int32 requirements_total = 2;
+  bool passed = 3;
+  string level_id = 4;
+  int32 required_coverage = 5;
+  int32 actual_coverage = 6;
+  string coverage_metric = 7;
+  string message = 8;
+}
+
+message ActivateProfileRequest {
+  string standard = 1;
+  string level = 2;
+}
+
+message AvailableProfilesResponse {
+  repeated CertificationProfile profiles = 1;
+}
+
+message CertificationProfile {
+  string standard = 1;
+  string version = 2;
+  string publisher = 3;
+  repeated CertificationLevel levels = 4;
+}
+
+message CertificationLevel {
+  string id = 1;
+  string label = 2;
+  string failure_condition = 3;
+  string coverage_metric = 4;
+}
+
+// --- Requirement Messages ---
+
+message RequirementsResponse {
+  repeated Requirement requirements = 1;
+}
+
+message Requirement {
+  int32 id = 1;
+  string requirement_id = 2;
+  string level = 3;
+  string title = 4;
+  string description = 5;
+  string dal_level = 6;
+  string status = 7;
+  string parent_requirement_id = 8;
+  string source = 9;
+  string rationale = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message AddRequirementRequest {
+  string requirement_id = 1;
+  string level = 2;
+  string title = 3;
+  string description = 4;
+  string dal_level = 5;
+  string parent_requirement_id = 6;
+  string source = 7;
+  string rationale = 8;
+}
+
+message UpdateRequirementRequest {
+  string requirement_id = 1;
+  string title = 2;
+  string description = 3;
+  string dal_level = 4;
+  string status = 5;
+  string rationale = 6;
+}
+
+message RequirementResponse {
+  int32 id = 1;
+  string requirement_id = 2;
+}
+
+// --- Traceability Messages ---
+
+message TraceabilityMatrixResponse {
+  repeated TraceabilityMatrixRow rows = 1;
+}
+
+message TraceabilityMatrixRow {
+  string requirement_id = 1;
+  string requirement_level = 2;
+  string title = 3;
+  string dal_level = 4;
+  string status = 5;
+  repeated string linked_source_files = 6;
+  repeated string linked_test_files = 7;
+  repeated string linked_documents = 8;
+  int32 coverage_percent = 9;
+}
+
+message TraceabilityLinksResponse {
+  repeated TraceabilityLink links = 1;
+}
+
+message TraceabilityLink {
+  int32 id = 1;
+  string requirement_id = 2;
+  string artifact_type = 3;
+  string artifact_path = 4;
+  int32 artifact_line_start = 5;
+  int32 artifact_line_end = 6;
+  string link_type = 7;
+  string confidence = 8;
+  bool is_verified = 9;
+  string created_at = 10;
+}
+
+message AddTraceLinkRequest {
+  string requirement_id = 1;
+  string artifact_type = 2;
+  string artifact_path = 3;
+  int32 artifact_line_start = 4;
+  int32 artifact_line_end = 5;
+  string link_type = 6;
+}
+
+message TraceLinkResponse {
+  int32 id = 1;
+}
+
+message UntracedCodeResponse {
+  repeated UntracedFunction functions = 1;
+}
+
+message UntracedFunction {
+  string name = 1;
+  int32 start_line = 2;
+  int32 end_line = 3;
+  string file_path = 4;
+  string language = 5;
+}
+
+// --- Impact Analysis Messages ---
+
+message GetImpactAnalysisRequest {
+  string requirement_id = 1;
+}
+
+message ImpactFile {
+  string file_path = 1;
+  int32 line_start = 2;
+  int32 line_end = 3;
+  string link_type = 4;
+}
+
+message ImpactTest {
+  string file_path = 1;
+  string link_type = 2;
+}
+
+message ImpactAnalysisResponse {
+  string requirement_id = 1;
+  repeated ImpactFile affected_files = 2;
+  repeated ImpactTest affected_tests = 3;
+  repeated string cascading_requirements = 4;
+}
+
+// --- Audit Messages ---
+
+message AuditQueryRequest {
+  string event_type = 1;
+  string user_id = 2;
+  string start_date = 3;
+  string end_date = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+
+message AuditEntriesResponse {
+  repeated AuditEntry entries = 1;
+  int32 total_count = 2;
+}
+
+message AuditEntry {
+  int32 id = 1;
+  string entry_hash = 2;
+  string previous_hash = 3;
+  string event_type = 4;
+  string event_action = 5;
+  string user_id = 6;
+  string session_id = 7;
+  string task_id = 8;
+  string timestamp = 9;
+  string entity_type = 10;
+  string entity_id = 11;
+  string model_id = 12;
+  string model_version = 13;
+  int32 profile_id = 14;
+  string payload = 15;
+}
+
+message IntegrityResponse {
+  bool valid = 1;
+  int32 total_entries = 2;
+  int32 broken_at = 3;
+  string last_checked = 4;
+}
+
+message DecisionStatsResponse {
+  int32 total = 1;
+  int32 accepted = 2;
+  int32 modified = 3;
+  int32 rejected = 4;
+  int32 avg_decision_time_ms = 5;
+}
+
+message GenerationHistoryResponse {
+  repeated GenerationEntry generations = 1;
+}
+
+message GenerationEntry {
+  string generation_id = 1;
+  string model_id = 2;
+  string user_message = 3;
+  repeated string files_written = 4;
+  string timestamp = 5;
+  string decision = 6;
+}
+
+// --- Export Messages ---
+
+message ExportRequest {
+  string format = 1;
+  string start_date = 2;
+  string end_date = 3;
+}
+
+message ExportResponse {
+  string file_path = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// --- Real-time Updates ---
+
+message CertificationUpdate {
+  string update_type = 1;
+  string entity_type = 2;
+  string entity_id = 3;
+  string payload = 4;
+  string timestamp = 5;
+}

@@ -39,8 +39,22 @@ Otherwise, if you have not completed the task and do not need additional informa
 	autoApprovalMaxReached: (feedback?: string) =>
 		`Auto-approval limit reached. The user has provided the following feedback to help guide you:\n<feedback>\n${feedback}\n</feedback>`,
 
-	missingToolParameterError: (paramName: string) =>
-		`Missing value for required parameter '${paramName}'. Please retry with complete response.\n\n${toolUseInstructionsReminder}`,
+	missingToolParameterError: (paramName: string, toolName?: string) => {
+		let toolSpecificHint = ""
+		if (toolName) {
+			// Provide tool-specific format examples to help the model self-correct
+			const toolExamples: Record<string, string> = {
+				read_file: `\n\nCorrect format for read_file:\n<read_file>\n<path>the/file/path.py</path>\n</read_file>`,
+				write_to_file: `\n\nCorrect format for write_to_file:\n<write_to_file>\n<path>the/file/path.py</path>\n<content>\nfile content here\n</content>\n</write_to_file>`,
+				replace_in_file: `\n\nCorrect format for replace_in_file:\n<replace_in_file>\n<path>the/file/path.py</path>\n<diff>\n------- SEARCH\n[exact text to find]\n=======\n[new text]\n+++++++ REPLACE\n</diff>\n</replace_in_file>`,
+				list_files: `\n\nCorrect format for list_files:\n<list_files>\n<path>directory/path</path>\n</list_files>`,
+				search_files: `\n\nCorrect format for search_files:\n<search_files>\n<path>directory/path</path>\n<regex>pattern</regex>\n</search_files>`,
+				execute_command: `\n\nCorrect format for execute_command:\n<execute_command>\n<command>ls -la</command>\n<requires_approval>false</requires_approval>\n</execute_command>`,
+			}
+			toolSpecificHint = toolExamples[toolName] || ""
+		}
+		return `Missing value for required parameter '${paramName}'. Please retry with complete response.${toolSpecificHint}\n\n${toolUseInstructionsReminder}`
+	},
 
 	invalidMcpToolArgumentError: (serverName: string, toolName: string) =>
 		`Invalid JSON argument used with ${serverName} for ${toolName}. Please retry with a properly formatted JSON argument.`,

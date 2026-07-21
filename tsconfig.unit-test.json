@@ -1,11 +1,13 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"module": "commonjs"
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"typeRoots": ["./node_modules/@types", "./src/test/types"]
 	},
 	"ts-node": {
 		"require": ["tsconfig-paths/register"]
 	},
-	"include": ["test/**/*.ts"],
+	"include": ["src/**/__tests__/*.ts", "src/certification/**/*.ts", "src/test/**/*.ts", "eslint-rules/__tests__/**/*.ts"],
 	"exclude": ["node_modules"]
 }

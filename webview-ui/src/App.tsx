@@ -6,10 +6,14 @@ import HistoryView from "./components/history/HistoryView"
 import McpView from "./components/mcp/configuration/McpConfigurationView"
 import SettingsView from "./components/settings/SettingsView"
 import WelcomeView from "./components/welcome/WelcomeView"
+import TraceabilityView from "./components/traceability/TraceabilityView"
+import AuditTrailView from "./components/audit/AuditTrailView"
+import ProfileSetup from "./components/certification/ProfileSetup"
 import { useAeriocodeAuth } from "./context/AeriocodeAuthContext"
 import { useExtensionState } from "./context/ExtensionStateContext"
 import { Providers } from "./Providers"
-import { UiServiceClient } from "./services/grpc-client"
+import { CertificationServiceClient, UiServiceClient } from "./services/grpc-client"
+import { ActivateProfileRequest } from "@shared/proto/aeriocode/certification"
 
 const AppContent = () => {
 	const {
@@ -21,15 +25,24 @@ const AppContent = () => {
 		showSettings,
 		showHistory,
 		showAccount,
+		showTraceability,
+		showAuditTrail,
+		showProfileSetup,
 		showAnnouncement,
 		setShowAnnouncement,
 		setShouldShowAnnouncement,
 		closeMcpView,
 		navigateToHistory,
+		navigateToTraceability,
+		navigateToAuditTrail,
 		hideSettings,
 		hideHistory,
 		hideAccount,
+		hideTraceability,
+		hideAuditTrail,
+		hideProfileSetup,
 		hideAnnouncement,
+		refreshCertificationStatus,
 	} = useExtensionState()
 
 	const { aeriocodeUser, organizations, activeOrganization } = useAeriocodeAuth()
@@ -74,10 +87,37 @@ const AppContent = () => {
 							activeOrganization={activeOrganization}
 						/>
 					)}
+					{showTraceability && <TraceabilityView onDone={hideTraceability} />}
+					{showAuditTrail && <AuditTrailView onDone={hideAuditTrail} />}
+					{showProfileSetup && (
+						<ProfileSetup
+							onSetup={async (standard, level) => {
+								try {
+									await CertificationServiceClient.activateProfile(
+										ActivateProfileRequest.create({ standard, level }),
+									)
+									await refreshCertificationStatus()
+									hideProfileSetup()
+									navigateToTraceability()
+								} catch (error) {
+									console.error("Failed to activate certification profile:", error)
+								}
+							}}
+							onSkip={hideProfileSetup}
+						/>
+					)}
 					{/* Do not conditionally load ChatView, it's expensive and there's state we don't want to lose (user input, disableInput, askResponse promise, etc.) */}
 					<ChatView
 						showHistoryView={navigateToHistory}
-						isHidden={showSettings || showHistory || showMcp || showAccount}
+						isHidden={
+							showSettings ||
+							showHistory ||
+							showMcp ||
+							showAccount ||
+							showTraceability ||
+							showAuditTrail ||
+							showProfileSetup
+						}
 						showAnnouncement={showAnnouncement}
 						hideAnnouncement={hideAnnouncement}
 					/>

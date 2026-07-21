@@ -54,6 +54,9 @@ old_docs/**
 !node_modules/@vscode/codicons/dist/codicon.css
 !node_modules/@vscode/codicons/dist/codicon.ttf
 
+# Include sql.js WASM (pure JavaScript, no native compilation needed)
+!node_modules/sql.js/**
+
 # Include default themes JSON files used in getTheme
 !src/integrations/theme/default-themes/**
 

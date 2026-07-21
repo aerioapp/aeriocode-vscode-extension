@@ -60,4 +60,7 @@ export class TaskState {
 
 	// File read cache for tracking file reads
 	fileReadCache = new Map<string, string>()
+
+	// Files written during current AI generation (for certification audit trail)
+	filesWrittenDuringGeneration: string[] = []
 }

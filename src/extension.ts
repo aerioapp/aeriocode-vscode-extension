@@ -12,6 +12,8 @@ import { sendChatButtonClickedEvent } from "./core/controller/ui/subscribeToChat
 import { sendHistoryButtonClickedEvent } from "./core/controller/ui/subscribeToHistoryButtonClicked"
 import { sendMcpButtonClickedEvent } from "./core/controller/ui/subscribeToMcpButtonClicked"
 import { sendSettingsButtonClickedEvent } from "./core/controller/ui/subscribeToSettingsButtonClicked"
+import { sendTraceabilityButtonClickedEvent } from "./core/controller/ui/subscribeToTraceabilityButtonClicked"
+import { sendAuditTrailButtonClickedEvent } from "./core/controller/ui/subscribeToAuditTrailButtonClicked"
 import { WebviewProvider } from "./core/webview"
 import { createAeriocodeAPI } from "./exports"
 import { Logger } from "./services/logging/Logger"
@@ -32,6 +34,7 @@ import { AuthService } from "./services/auth/AuthService"
 import { telemetryService } from "./services/telemetry"
 import { SharedUriHandler } from "./services/uri/SharedUriHandler"
 import { ShowMessageType } from "./shared/proto/host/window"
+import { CertificationManager } from "./certification"
 /*
 Built using https://github.com/microsoft/vscode-webview-ui-toolkit
 
@@ -53,6 +56,24 @@ export async function activate(context: vscode.ExtensionContext) {
 	const testModeWatchers = await initializeTestMode(sidebarWebview)
 	// Initialize test mode and add disposables to context
 	context.subscriptions.push(...testModeWatchers)
+
+	// Initialize certification system (local-first traceability and audit trail)
+	// Always create the singleton so gRPC handlers don't throw, but only init DB if sql.js loads
+	try {
+		const certManager = CertificationManager.getInstance(context)
+
+		// Initialize sql.js WASM for certification database
+		const { SqlJsDatabase } = await import("@/certification/db/SqlJsDatabase")
+		await SqlJsDatabase.init()
+
+		// Now initialize workspace tracking
+		CertificationManager.initialize(context)
+		context.subscriptions.push(certManager)
+		// Set context for when clauses in package.json
+		vscode.commands.executeCommand("setContext", "aeriocode.certificationActive", certManager.getStatus().active)
+	} catch (certError) {
+		Logger.log("Certification system initialization failed - certification features disabled: " + certError)
+	}
 
 	vscode.commands.executeCommand("setContext", "aeriocode.isDevMode", IS_DEV && IS_DEV === "true")
 
@@ -191,6 +212,22 @@ export async function activate(context: vscode.ExtensionContext) {
 					sendAccountButtonClickedEvent(instance.controller.id)
 				}
 			}
+		}),
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.traceabilityButtonClicked", (webview: any) => {
+			const isSidebar = !webview
+			const webviewType = isSidebar ? WebviewProviderTypeEnum.SIDEBAR : WebviewProviderTypeEnum.TAB
+			sendTraceabilityButtonClickedEvent(webviewType)
+		}),
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.auditTrailButtonClicked", (webview: any) => {
+			const isSidebar = !webview
+			const webviewType = isSidebar ? WebviewProviderTypeEnum.SIDEBAR : WebviewProviderTypeEnum.TAB
+			sendAuditTrailButtonClickedEvent(webviewType)
 		}),
 	)
 

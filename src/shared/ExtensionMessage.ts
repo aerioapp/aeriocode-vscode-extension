@@ -64,6 +64,9 @@ export interface ExtensionState {
 	localWindsurfRulesToggles: AeriocodeRulesToggles
 	mcpResponsesCollapsed?: boolean
 	strictPlanModeEnabled?: boolean
+	certificationActive?: boolean
+	certificationProfile?: string
+	certificationLevel?: string
 }
 
 export interface AeriocodeMessage {

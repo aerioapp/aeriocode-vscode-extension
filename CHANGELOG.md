@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.5]
+
+### Bug Fixes
+
+- **Fixed LLM closing tag leak in write_to_file** -- Parser now correctly handles mismatched closing tags (e.g. wrong XML tags instead of correct ones) that caused stray XML tags to appear in written files.
+- **Added fallback for alternative opening tags** -- Parser gracefully handles cases where the LLM uses wrong parameter tags for the content parameter.
+- **Added ToolExecutor safety net** -- Trailing XML closing tags are now stripped from file content before writing.
+- **Added system prompt tag format clarification** -- System prompt now explicitly warns that closing tags must match opening tags exactly.
+
 ## [0.0.4]
 
 ### Certification System

@@ -67,6 +67,23 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 				currentToolUse.params[currentParamName] = value
 				currentParamName = undefined // Go back to parsing tool content
 				// We don't continue loop here, need to check for tool close or other params at index i
+			} else if (
+				// Handle mismatched closing tags: LLM may use wrong closing tag for content param
+				currentParamName === "content" &&
+				currentToolUse.name === "write_to_file" &&
+				currentCharIndex >= 10 &&
+				assistantMessage.startsWith("</parameter>", currentCharIndex - 10)
+			) {
+				// Check if the correct closing tag exists later in the string
+				const remainingAfterThis = assistantMessage.slice(currentCharIndex + 1)
+				if (!remainingAfterThis.includes("</content>")) {
+					// No correct closing tag found later - treat the mismatched tag as the close tag
+					const value = assistantMessage.slice(currentParamValueStart, currentCharIndex - 10).trim()
+					currentToolUse.params[currentParamName] = value
+					currentParamName = undefined
+				} else {
+					continue // Correct closing tag exists later, keep looking
+				}
 			} else {
 				continue // Still inside param value, move to next char
 			}
@@ -118,6 +135,19 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 
 					if (contentStart !== -1 && contentEnd !== -1 && contentEnd > contentStart) {
 						const contentValue = toolContentSlice.slice(contentStart + contentStartTag.length, contentEnd).trim()
+						currentToolUse.params[contentParamName] = contentValue
+					}
+				}
+				// Fallback: also check for alt opening tag
+				if (
+					!currentToolUse.params[contentParamName] &&
+					currentToolUse.name === "write_to_file" &&
+					toolContentSlice.includes("<parameter>")
+				) {
+					const altStart = toolContentSlice.indexOf("<parameter>")
+					const altEnd = toolContentSlice.lastIndexOf("</parameter>")
+					if (altStart !== -1 && altEnd !== -1 && altEnd > altStart) {
+						const contentValue = toolContentSlice.slice(altStart + 10, altEnd).trim()
 						currentToolUse.params[contentParamName] = contentValue
 					}
 				}

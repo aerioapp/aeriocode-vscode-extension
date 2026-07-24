@@ -32,6 +32,15 @@ const AERIOCODE_MODELS: Record<string, ModelInfo> = {
 		outputPrice: 0,
 		description: "AerioCode specialized for DO-178C compliance",
 	},
+	"AerioCode-JFAVpp": {
+		maxTokens: 32000,
+		contextWindow: 1_000_000,
+		supportsImages: false,
+		supportsPromptCache: false,
+		inputPrice: 0,
+		outputPrice: 0,
+		description: "AerioCode specialized for JF-AV++ C++ coding standards compliance",
+	},
 	"AerioCode-mini": {
 		maxTokens: 32000,
 		contextWindow: 1_000_000,

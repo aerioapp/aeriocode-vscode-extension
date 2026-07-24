@@ -133,6 +133,9 @@ export class Task {
 	private fileContextTracker: FileContextTracker
 	private modelContextTracker: ModelContextTracker
 
+	// Context information for API handler rebuilds
+	private contextInfo: ApiConfiguration["context"]
+
 	// Callbacks
 	private updateTaskHistory: (historyItem: HistoryItem) => Promise<HistoryItem[]>
 	private postStateToWebview: () => Promise<void>
@@ -313,6 +316,8 @@ export class Task {
 			browserSettings: this.browserSettings,
 		}
 
+		this.contextInfo = contextInfo
+
 		this.api = buildApiHandler(
 			{
 				...effectiveApiConfiguration,
@@ -378,6 +383,10 @@ export class Task {
 
 	public updateStrictPlanMode(strictPlanModeEnabled: boolean): void {
 		this.toolExecutor.updateStrictPlanModeEnabled(strictPlanModeEnabled)
+	}
+
+	public getContextInfo(): ApiConfiguration["context"] {
+		return this.contextInfo
 	}
 
 	// While a task is ref'd by a controller, it will always have access to the extension context

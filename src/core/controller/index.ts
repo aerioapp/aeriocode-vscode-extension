@@ -288,7 +288,10 @@ export class Controller {
 		// Update API handler with new mode (buildApiHandler now selects provider based on mode)
 		if (this.task) {
 			const apiConfiguration = this.cacheService.getApiConfiguration()
-			this.task.api = buildApiHandler({ ...apiConfiguration, taskId: this.task.taskId }, modeToSwitchTo)
+			this.task.api = buildApiHandler(
+				{ ...apiConfiguration, taskId: this.task.taskId, context: this.task.getContextInfo() },
+				modeToSwitchTo,
+			)
 		}
 
 		await this.postStateToWebview()
@@ -380,7 +383,10 @@ export class Controller {
 			await updateGlobalState(this.context, "welcomeViewCompleted", true)
 
 			if (this.task) {
-				this.task.api = buildApiHandler({ ...updatedConfig, taskId: this.task.taskId }, currentMode)
+				this.task.api = buildApiHandler(
+					{ ...updatedConfig, taskId: this.task.taskId, context: this.task.getContextInfo() },
+					currentMode,
+				)
 			}
 
 			await this.postStateToWebview()

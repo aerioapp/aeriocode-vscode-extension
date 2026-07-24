@@ -28,6 +28,7 @@ function createHandlerForProvider(
 		modelId: modelId,
 		reasoningEffort: mode === "plan" ? options.planModeReasoningEffort : options.actModeReasoningEffort,
 		thinkingBudgetTokens: mode === "plan" ? options.planModeThinkingBudgetTokens : options.actModeThinkingBudgetTokens,
+		context: options.context,
 	})
 }
 

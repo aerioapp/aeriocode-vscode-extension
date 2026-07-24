@@ -77,6 +77,18 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 					},
 				},
 				{
+					id: "AerioCode-JFAVpp",
+					info: {
+						maxTokens: 32000,
+						contextWindow: 1_000_000,
+						supportsImages: false,
+						supportsPromptCache: false,
+						inputPrice: 0,
+						outputPrice: 0,
+						description: "AerioCode specialized for JF-AV++ C++ coding standards compliance",
+					},
+				},
+				{
 					id: "AerioCode-mini",
 					info: {
 						maxTokens: 32000,
@@ -115,6 +127,30 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 						inputPrice: 0,
 						outputPrice: 0,
 						description: "AerioCode general purpose coding assistant",
+					},
+				},
+				{
+					id: "AerioCode-DO178C",
+					info: {
+						maxTokens: 32000,
+						contextWindow: 1_000_000,
+						supportsImages: false,
+						supportsPromptCache: false,
+						inputPrice: 0,
+						outputPrice: 0,
+						description: "AerioCode specialized for DO-178C compliance",
+					},
+				},
+				{
+					id: "AerioCode-JFAVpp",
+					info: {
+						maxTokens: 32000,
+						contextWindow: 1_000_000,
+						supportsImages: false,
+						supportsPromptCache: false,
+						inputPrice: 0,
+						outputPrice: 0,
+						description: "AerioCode specialized for JF-AV++ C++ coding standards compliance",
 					},
 				},
 			])
@@ -159,11 +195,13 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 											? "AerioCode"
 											: model.id === "AerioCode-DO178C"
 												? "AerioCode DO-178C"
-												: model.id === "AerioCode-mini"
-													? "AerioCode Mini"
-													: model.id
-															.replace(/-/g, " ")
-															.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+												: model.id === "AerioCode-JFAVpp"
+													? "AerioCode JF-AV++"
+													: model.id === "AerioCode-mini"
+														? "AerioCode Mini"
+														: model.id
+																.replace(/-/g, " ")
+																.replace(/\b\w/g, (letter) => letter.toUpperCase())}
 									</VSCodeOption>
 								))}
 							</VSCodeDropdown>

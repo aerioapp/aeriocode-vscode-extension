@@ -490,7 +490,13 @@ export class ToolExecutor {
 			case "write_to_file":
 			case "replace_in_file": {
 				const relPath: string | undefined = block.params.path
-				const content: string | undefined = block.params.content // for write_to_file
+				let content: string | undefined = block.params.content // for write_to_file
+				// Safety net: strip trailing XML closing tags that may have leaked into content
+				if (content) {
+					content = content
+						.replace(/\s*<\/(parameter|content|path|write_to_file|final_file_content)>\s*$/g, "")
+						.trimEnd()
+				}
 				let diff: string | undefined = block.params.diff // for replace_in_file
 				if (!relPath || (!content && !diff)) {
 					// checking for content/diff ensures relPath is complete

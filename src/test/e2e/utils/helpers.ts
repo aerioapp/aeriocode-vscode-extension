@@ -1,4 +1,4 @@
-import { mkdtempSync, type PathLike, type RmOptions, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, type PathLike, readdirSync, type RmOptions, rmSync } from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { type ElectronApplication, expect, type Frame, type Page, test } from "@playwright/test"
@@ -77,6 +77,54 @@ export class E2ETestHelper {
 
 		await E2ETestHelper.waitUntil(async () => (await findSidebarFrame()) !== null)
 		return (await findSidebarFrame()) || page.mainFrame()
+	}
+
+	/**
+	 * Download VS Code, and make sure what comes back is actually runnable.
+	 *
+	 * `downloadAndUnzipVSCode` decides whether it can skip the download by testing for an
+	 * `is-complete` marker file next to the install — it never checks that the executable
+	 * itself is there. CI restores `.vscode-test` from `actions/cache`, and on macOS the
+	 * install is an `.app` bundle whose binary sits several levels down at
+	 * `Contents/MacOS/Electron`. If that bundle comes back from the cache incomplete, the
+	 * marker is still present, the download is skipped, and the path returned points at a
+	 * file that does not exist — every test then dies instantly with
+	 * `electron.launch: ... ENOENT` rather than anything that names the real problem.
+	 * Linux (a flat `code` binary) and Windows (`Code.exe`) survive the round trip, which
+	 * is why this only ever bit macOS.
+	 *
+	 * So: verify, and if the binary is missing drop the whole versioned directory —
+	 * marker included — and download once more.
+	 */
+	public static async resolveVSCodeExecutable(): Promise<string> {
+		const executablePath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
+		if (existsSync(executablePath)) {
+			return executablePath
+		}
+
+		// The executable lives inside the versioned download directory; discard that whole
+		// directory so the next call cannot short-circuit on a stale completion marker.
+		const cacheRoot = path.join(E2ETestHelper.CODEBASE_ROOT_DIR, ".vscode-test")
+		const staleInstall = path.relative(cacheRoot, executablePath).split(path.sep)[0]
+
+		console.warn(
+			`VS Code download reported success but ${executablePath} does not exist — ` +
+				`discarding ${staleInstall} and downloading again.`,
+		)
+
+		if (staleInstall && !staleInstall.startsWith("..")) {
+			await E2ETestHelper.rmForRetries(path.join(cacheRoot, staleInstall), { recursive: true, force: true })
+		}
+
+		const redownloadedPath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
+		if (!existsSync(redownloadedPath)) {
+			throw new Error(
+				`VS Code is still missing at ${redownloadedPath} after a clean re-download. ` +
+					`Contents of ${cacheRoot}: ${readdirSync(cacheRoot).join(", ") || "(empty)"}`,
+			)
+		}
+
+		return redownloadedPath
 	}
 
 	public static async rmForRetries(path: PathLike, options?: RmOptions): Promise<void> {
@@ -202,7 +250,7 @@ export const e2e = test
 	})
 	.extend<{ openVSCode: () => Promise<ElectronApplication> }>({
 		openVSCode: async ({ workspaceDir, userDataDir, extensionsDir }, use, testInfo) => {
-			const executablePath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
+			const executablePath = await E2ETestHelper.resolveVSCodeExecutable()
 
 			await use(async () => {
 				const app = await _electron.launch({

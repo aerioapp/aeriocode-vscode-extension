@@ -80,51 +80,105 @@ export class E2ETestHelper {
 	}
 
 	/**
-	 * Download VS Code, and make sure what comes back is actually runnable.
+	 * Locate the VS Code binary inside an unpacked install, whatever shape it landed in.
 	 *
-	 * `downloadAndUnzipVSCode` decides whether it can skip the download by testing for an
-	 * `is-complete` marker file next to the install — it never checks that the executable
-	 * itself is there. CI restores `.vscode-test` from `actions/cache`, and on macOS the
-	 * install is an `.app` bundle whose binary sits several levels down at
-	 * `Contents/MacOS/Electron`. If that bundle comes back from the cache incomplete, the
-	 * marker is still present, the download is skipped, and the path returned points at a
-	 * file that does not exist — every test then dies instantly with
-	 * `electron.launch: ... ENOENT` rather than anything that names the real problem.
-	 * Linux (a flat `code` binary) and Windows (`Code.exe`) survive the round trip, which
-	 * is why this only ever bit macOS.
-	 *
-	 * So: verify, and if the binary is missing drop the whole versioned directory —
-	 * marker included — and download once more.
+	 * @vscode/test-electron computes one fixed path per platform, but it unpacks archives
+	 * two different ways. The zip branch extracts verbatim, giving the
+	 * `Visual Studio Code.app/...` layout it expects. The tar.gz branch runs
+	 * `tar --strip-components=1` for every non-CLI platform, which removes the `.app`
+	 * directory itself and leaves `Contents/` at the top of the versioned directory — so
+	 * the path it then hands back does not exist. Re-downloading reproduces that exactly,
+	 * which is why a clean retry did not help on macOS.
 	 */
-	public static async resolveVSCodeExecutable(): Promise<string> {
-		const executablePath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
-		if (existsSync(executablePath)) {
-			return executablePath
+	private static findVSCodeExecutable(installDir: string): string | null {
+		const candidates = [
+			// The layout @vscode/test-electron assumes on macOS.
+			path.join("Visual Studio Code.app", "Contents", "MacOS", "Electron"),
+			// The same bundle after --strip-components=1 removed its top level.
+			path.join("Contents", "MacOS", "Electron"),
+			// Linux and Windows are a single binary and are unaffected by either branch.
+			"code",
+			"Code.exe",
+		]
+
+		for (const candidate of candidates) {
+			const full = path.join(installDir, candidate)
+			if (existsSync(full)) {
+				return full
+			}
 		}
 
-		// The executable lives inside the versioned download directory; discard that whole
-		// directory so the next call cannot short-circuit on a stale completion marker.
+		// Fall back to any other bundle name (Insiders, or a renamed stable build).
+		for (const entry of readdirSync(installDir)) {
+			if (!entry.endsWith(".app")) {
+				continue
+			}
+			const full = path.join(installDir, entry, "Contents", "MacOS", "Electron")
+			if (existsSync(full)) {
+				return full
+			}
+		}
+
+		return null
+	}
+
+	/**
+	 * Download VS Code and return a path that actually exists.
+	 *
+	 * `downloadAndUnzipVSCode` reports success without ever checking its own answer: it
+	 * skips the download whenever an `is-complete` marker sits beside the install, and the
+	 * path it derives assumes an unpack layout it does not always produce (see
+	 * findVSCodeExecutable). Either way the caller gets a path to a missing file, and
+	 * Playwright surfaces it only as `electron.launch: ... spawn ... ENOENT` with every
+	 * test failing in milliseconds.
+	 *
+	 * So: check the answer. Prefer finding the binary where it really landed; only if it
+	 * is nowhere at all discard the versioned directory — marker included, so the next
+	 * call cannot short-circuit — and download once more.
+	 */
+	public static async resolveVSCodeExecutable(): Promise<string> {
+		const reportedPath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
+		if (existsSync(reportedPath)) {
+			return reportedPath
+		}
+
 		const cacheRoot = path.join(E2ETestHelper.CODEBASE_ROOT_DIR, ".vscode-test")
-		const staleInstall = path.relative(cacheRoot, executablePath).split(path.sep)[0]
+		const installName = path.relative(cacheRoot, reportedPath).split(path.sep)[0]
+		const installDir = path.join(cacheRoot, installName)
+		const insideCache = Boolean(installName) && !installName.startsWith("..")
 
-		console.warn(
-			`VS Code download reported success but ${executablePath} does not exist — ` +
-				`discarding ${staleInstall} and downloading again.`,
-		)
+		if (insideCache && existsSync(installDir)) {
+			const found = E2ETestHelper.findVSCodeExecutable(installDir)
+			if (found) {
+				console.warn(`VS Code is not at ${reportedPath}; using ${found} instead.`)
+				return found
+			}
+		}
 
-		if (staleInstall && !staleInstall.startsWith("..")) {
-			await E2ETestHelper.rmForRetries(path.join(cacheRoot, staleInstall), { recursive: true, force: true })
+		console.warn(`VS Code is missing at ${reportedPath} — discarding ${installName} and downloading again.`)
+		if (insideCache) {
+			await E2ETestHelper.rmForRetries(installDir, { recursive: true, force: true })
 		}
 
 		const redownloadedPath = await downloadAndUnzipVSCode("stable", undefined, new SilentReporter())
-		if (!existsSync(redownloadedPath)) {
-			throw new Error(
-				`VS Code is still missing at ${redownloadedPath} after a clean re-download. ` +
-					`Contents of ${cacheRoot}: ${readdirSync(cacheRoot).join(", ") || "(empty)"}`,
-			)
+		if (existsSync(redownloadedPath)) {
+			return redownloadedPath
+		}
+		if (insideCache && existsSync(installDir)) {
+			const found = E2ETestHelper.findVSCodeExecutable(installDir)
+			if (found) {
+				console.warn(`After re-download VS Code is not at ${redownloadedPath}; using ${found} instead.`)
+				return found
+			}
 		}
 
-		return redownloadedPath
+		// Nothing matched, so name what is actually on disk rather than leaving the next
+		// reader with a bare ENOENT.
+		const listing = insideCache && existsSync(installDir) ? readdirSync(installDir).join(", ") || "(empty)" : "(missing)"
+		throw new Error(
+			`VS Code is still missing at ${redownloadedPath} after a clean re-download, and no ` +
+				`executable was found under ${installDir}. Contents of ${installDir}: ${listing}`,
+		)
 	}
 
 	public static async rmForRetries(path: PathLike, options?: RmOptions): Promise<void> {

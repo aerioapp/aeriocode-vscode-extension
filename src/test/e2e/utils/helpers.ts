@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, type PathLike, readdirSync, type RmOptions, rmSync } from "node:fs"
+import { type Dirent, existsSync, mkdtempSync, type PathLike, readdirSync, type RmOptions, rmSync } from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { type ElectronApplication, expect, type Frame, type Page, test } from "@playwright/test"
@@ -80,23 +80,61 @@ export class E2ETestHelper {
 	}
 
 	/**
+	 * Describe what is actually on disk, bounded so a full .app bundle cannot flood the log.
+	 *
+	 * The error this feeds is the only view into a runner we cannot reproduce locally, and
+	 * a listing one level too shallow has already cost two wrong diagnoses.
+	 */
+	private static describeTree(root: string, maxDepth = 3, maxEntries = 40): string {
+		const lines: string[] = []
+
+		const walk = (dir: string, depth: number, prefix: string) => {
+			if (depth > maxDepth || lines.length >= maxEntries) {
+				return
+			}
+			let entries: Dirent[]
+			try {
+				entries = readdirSync(dir, { withFileTypes: true })
+			} catch (error: any) {
+				lines.push(`${prefix}<unreadable: ${error.code ?? error.message}>`)
+				return
+			}
+			for (const entry of entries) {
+				if (lines.length >= maxEntries) {
+					lines.push(`${prefix}… (truncated)`)
+					return
+				}
+				const kind = entry.isDirectory() ? "/" : entry.isSymbolicLink() ? " -> (symlink)" : ""
+				lines.push(`${prefix}${entry.name}${kind}`)
+				if (entry.isDirectory()) {
+					walk(path.join(dir, entry.name), depth + 1, `${prefix}  `)
+				}
+			}
+		}
+
+		walk(root, 1, "")
+		return lines.join("\n") || "(empty)"
+	}
+
+	/**
 	 * Locate the VS Code binary inside an unpacked install, whatever shape it landed in.
 	 *
-	 * @vscode/test-electron computes one fixed path per platform, but it unpacks archives
-	 * two different ways. The zip branch extracts verbatim, giving the
-	 * `Visual Studio Code.app/...` layout it expects. The tar.gz branch runs
-	 * `tar --strip-components=1` for every non-CLI platform, which removes the `.app`
-	 * directory itself and leaves `Contents/` at the top of the versioned directory — so
-	 * the path it then hands back does not exist. Re-downloading reproduces that exactly,
-	 * which is why a clean retry did not help on macOS.
+	 * @vscode/test-electron derives one fixed path per platform and never checks it. On the
+	 * macOS runner that path — `Visual Studio Code.app/Contents/MacOS/Electron` — does not
+	 * exist even though the bundle beside it does, and it stays missing across a clean
+	 * re-download, so neither the cache nor the unpack strip level explains it. Rather than
+	 * encode yet another guess about the layout, search for the binary: check the paths the
+	 * library expects first, then walk the install for an executable by name.
 	 */
 	private static findVSCodeExecutable(installDir: string): string | null {
+		const EXECUTABLE_NAMES = new Set(["Electron", "code", "Code.exe", "code-insiders", "Code - Insiders"])
+
 		const candidates = [
 			// The layout @vscode/test-electron assumes on macOS.
 			path.join("Visual Studio Code.app", "Contents", "MacOS", "Electron"),
-			// The same bundle after --strip-components=1 removed its top level.
+			// The same bundle with its top level stripped.
 			path.join("Contents", "MacOS", "Electron"),
-			// Linux and Windows are a single binary and are unaffected by either branch.
+			// Linux and Windows ship a single binary at the top level.
 			"code",
 			"Code.exe",
 		]
@@ -108,15 +146,52 @@ export class E2ETestHelper {
 			}
 		}
 
-		// Fall back to any other bundle name (Insiders, or a renamed stable build).
+		// Any bundle's MacOS directory holds just the launcher, so read it rather than
+		// assuming the launcher's name.
 		for (const entry of readdirSync(installDir)) {
 			if (!entry.endsWith(".app")) {
 				continue
 			}
-			const full = path.join(installDir, entry, "Contents", "MacOS", "Electron")
-			if (existsSync(full)) {
-				return full
+			const macOsDir = path.join(installDir, entry, "Contents", "MacOS")
+			if (!existsSync(macOsDir)) {
+				continue
 			}
+			for (const candidate of readdirSync(macOsDir, { withFileTypes: true })) {
+				if (candidate.isFile() || candidate.isSymbolicLink()) {
+					return path.join(macOsDir, candidate.name)
+				}
+			}
+		}
+
+		// Last resort: find an executable by name anywhere in the install. Bounded depth,
+		// because a VS Code bundle holds thousands of files and the launcher is shallow.
+		const search = (dir: string, depth: number): string | null => {
+			if (depth > 5) {
+				return null
+			}
+			let entries: Dirent[]
+			try {
+				entries = readdirSync(dir, { withFileTypes: true })
+			} catch {
+				return null
+			}
+			for (const entry of entries) {
+				const full = path.join(dir, entry.name)
+				if (entry.isDirectory()) {
+					const nested = search(full, depth + 1)
+					if (nested) {
+						return nested
+					}
+				} else if (EXECUTABLE_NAMES.has(entry.name)) {
+					return full
+				}
+			}
+			return null
+		}
+
+		const found = search(installDir, 1)
+		if (found) {
+			return found
 		}
 
 		return null
@@ -172,12 +247,14 @@ export class E2ETestHelper {
 			}
 		}
 
-		// Nothing matched, so name what is actually on disk rather than leaving the next
-		// reader with a bare ENOENT.
-		const listing = insideCache && existsSync(installDir) ? readdirSync(installDir).join(", ") || "(empty)" : "(missing)"
+		// Nothing matched. Print the tree rather than a single directory level — the shallow
+		// listing that shipped before said only "Visual Studio Code.app, is-complete", which
+		// looked healthy while the launcher inside it was unaccounted for.
+		const tree =
+			insideCache && existsSync(installDir) ? E2ETestHelper.describeTree(installDir) : "(install directory missing)"
 		throw new Error(
 			`VS Code is still missing at ${redownloadedPath} after a clean re-download, and no ` +
-				`executable was found under ${installDir}. Contents of ${installDir}: ${listing}`,
+				`executable was found under ${installDir}.\n${tree}`,
 		)
 	}
 

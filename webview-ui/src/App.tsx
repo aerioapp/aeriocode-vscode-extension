@@ -9,6 +9,7 @@ import WelcomeView from "./components/welcome/WelcomeView"
 import TraceabilityView from "./components/traceability/TraceabilityView"
 import AuditTrailView from "./components/audit/AuditTrailView"
 import ProfileSetup from "./components/certification/ProfileSetup"
+import ComplianceView from "./components/compliance/ComplianceView"
 import { useAeriocodeAuth } from "./context/AeriocodeAuthContext"
 import { useExtensionState } from "./context/ExtensionStateContext"
 import { Providers } from "./Providers"
@@ -28,6 +29,7 @@ const AppContent = () => {
 		showTraceability,
 		showAuditTrail,
 		showProfileSetup,
+		showCompliance,
 		showAnnouncement,
 		setShowAnnouncement,
 		setShouldShowAnnouncement,
@@ -41,6 +43,7 @@ const AppContent = () => {
 		hideTraceability,
 		hideAuditTrail,
 		hideProfileSetup,
+		hideCompliance,
 		hideAnnouncement,
 		refreshCertificationStatus,
 	} = useExtensionState()
@@ -88,6 +91,7 @@ const AppContent = () => {
 						/>
 					)}
 					{showTraceability && <TraceabilityView onDone={hideTraceability} />}
+					{showCompliance && <ComplianceView onDone={hideCompliance} />}
 					{showAuditTrail && <AuditTrailView onDone={hideAuditTrail} />}
 					{showProfileSetup && (
 						<ProfileSetup
@@ -116,7 +120,8 @@ const AppContent = () => {
 							showAccount ||
 							showTraceability ||
 							showAuditTrail ||
-							showProfileSetup
+							showProfileSetup ||
+							showCompliance
 						}
 						showAnnouncement={showAnnouncement}
 						hideAnnouncement={hideAnnouncement}

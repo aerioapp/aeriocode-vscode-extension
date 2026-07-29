@@ -32,6 +32,8 @@ export const toolUseNames = [
 	"apply_patch",
 	"web_search",
 	"generate_explanation",
+	// Coding standard compliance analysis, served by the Aeriocode backend
+	"compliance_check",
 ] as const
 
 // Converts array of tool call names into a union type ("execute_command" | "read_file" | ...)
@@ -72,6 +74,11 @@ export const toolParamNames = [
 	"blocked_domains",
 	"from_ref",
 	"to_ref",
+	// compliance_check params ("path" is already declared above)
+	"standard",
+	"mode",
+	"tier",
+	"rule_ids",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]

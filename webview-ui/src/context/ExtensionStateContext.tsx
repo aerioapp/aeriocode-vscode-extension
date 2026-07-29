@@ -46,6 +46,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	showTraceability: boolean
 	showAuditTrail: boolean
 	showProfileSetup: boolean
+	showCompliance: boolean
 	showAnnouncement: boolean
 
 	// Certification state
@@ -84,6 +85,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	navigateToTraceability: () => void
 	navigateToAuditTrail: () => void
 	navigateToProfileSetup: () => void
+	navigateToCompliance: () => void
 
 	// Hide functions
 	hideSettings: () => void
@@ -92,6 +94,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	hideTraceability: () => void
 	hideAuditTrail: () => void
 	hideProfileSetup: () => void
+	hideCompliance: () => void
 	hideAnnouncement: () => void
 	closeMcpView: () => void
 
@@ -116,6 +119,7 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [showTraceability, setShowTraceability] = useState(false)
 	const [showAuditTrail, setShowAuditTrail] = useState(false)
 	const [showProfileSetup, setShowProfileSetup] = useState(false)
+	const [showCompliance, setShowCompliance] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 
 	// Helper for MCP view
@@ -132,6 +136,7 @@ export const ExtensionStateContextProvider: React.FC<{
 	const hideTraceability = useCallback(() => setShowTraceability(false), [setShowTraceability])
 	const hideAuditTrail = useCallback(() => setShowAuditTrail(false), [setShowAuditTrail])
 	const hideProfileSetup = useCallback(() => setShowProfileSetup(false), [setShowProfileSetup])
+	const hideCompliance = useCallback(() => setShowCompliance(false), [setShowCompliance])
 
 	// Navigation functions
 	const navigateToMcp = useCallback(
@@ -147,26 +152,68 @@ export const ExtensionStateContextProvider: React.FC<{
 		[setShowMcp, setMcpTab, setShowSettings, setShowHistory, setShowAccount],
 	)
 
+	// Every full-screen view is `fixed inset-0`, so any one left open renders on top of the
+	// one being navigated to. This must close all of them, not just the three it originally
+	// knew about — traceability, audit trail and compliance all overlaid settings.
 	const navigateToSettings = useCallback(() => {
 		setShowHistory(false)
 		closeMcpView()
 		setShowAccount(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowCompliance(false)
 		setShowSettings(true)
-	}, [setShowSettings, setShowHistory, closeMcpView, setShowAccount])
+	}, [
+		setShowSettings,
+		setShowHistory,
+		closeMcpView,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowCompliance,
+	])
 
 	const navigateToHistory = useCallback(() => {
 		setShowSettings(false)
 		closeMcpView()
 		setShowAccount(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowCompliance(false)
 		setShowHistory(true)
-	}, [setShowSettings, closeMcpView, setShowAccount, setShowHistory])
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowCompliance,
+		setShowHistory,
+	])
 
 	const navigateToAccount = useCallback(() => {
 		setShowSettings(false)
 		closeMcpView()
 		setShowHistory(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowCompliance(false)
 		setShowAccount(true)
-	}, [setShowSettings, closeMcpView, setShowHistory, setShowAccount])
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowCompliance,
+		setShowAccount,
+	])
 
 	const navigateToChat = useCallback(() => {
 		setShowSettings(false)
@@ -176,6 +223,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowTraceability(false)
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
+		setShowCompliance(false)
 	}, [
 		setShowSettings,
 		closeMcpView,
@@ -184,6 +232,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowTraceability,
 		setShowAuditTrail,
 		setShowProfileSetup,
+		setShowCompliance,
 	])
 
 	const navigateToTraceability = useCallback(() => {
@@ -193,6 +242,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAccount(false)
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
+		setShowCompliance(false)
 		setShowTraceability(true)
 	}, [
 		setShowSettings,
@@ -201,6 +251,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAccount,
 		setShowAuditTrail,
 		setShowProfileSetup,
+		setShowCompliance,
 		setShowTraceability,
 	])
 
@@ -211,6 +262,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAccount(false)
 		setShowTraceability(false)
 		setShowProfileSetup(false)
+		setShowCompliance(false)
 		setShowAuditTrail(true)
 	}, [
 		setShowSettings,
@@ -219,6 +271,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAccount,
 		setShowTraceability,
 		setShowProfileSetup,
+		setShowCompliance,
 		setShowAuditTrail,
 	])
 
@@ -229,6 +282,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAccount(false)
 		setShowTraceability(false)
 		setShowAuditTrail(false)
+		setShowCompliance(false)
 		setShowProfileSetup(true)
 	}, [
 		setShowSettings,
@@ -238,6 +292,27 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowTraceability,
 		setShowAuditTrail,
 		setShowProfileSetup,
+		setShowCompliance,
+	])
+
+	const navigateToCompliance = useCallback(() => {
+		setShowSettings(false)
+		closeMcpView()
+		setShowHistory(false)
+		setShowAccount(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowCompliance(true)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowCompliance,
 	])
 
 	const [state, setState] = useState<ExtensionState>({
@@ -321,6 +396,7 @@ export const ExtensionStateContextProvider: React.FC<{
 
 	// Certification button subscription refs
 	const traceabilityButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
+	const complianceButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 	const auditTrailButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 
 	// Add ref for callbacks
@@ -508,6 +584,24 @@ export const ExtensionStateContextProvider: React.FC<{
 				},
 				onComplete: () => {
 					console.log("Traceability button clicked subscription completed")
+				},
+			},
+		)
+
+		// Set up compliance button clicked subscription
+		complianceButtonClickedSubscriptionRef.current = UiServiceClient.subscribeToComplianceButtonClicked(
+			WebviewProviderTypeRequest.create({
+				providerType: currentProviderType,
+			}),
+			{
+				onResponse: () => {
+					navigateToCompliance()
+				},
+				onError: (error) => {
+					console.error("Error in compliance button clicked subscription:", error)
+				},
+				onComplete: () => {
+					console.log("Compliance button clicked subscription completed")
 				},
 			},
 		)
@@ -708,6 +802,10 @@ export const ExtensionStateContextProvider: React.FC<{
 				traceabilityButtonClickedSubscriptionRef.current()
 				traceabilityButtonClickedSubscriptionRef.current = null
 			}
+			if (complianceButtonClickedSubscriptionRef.current) {
+				complianceButtonClickedSubscriptionRef.current()
+				complianceButtonClickedSubscriptionRef.current = null
+			}
 			if (auditTrailButtonClickedSubscriptionRef.current) {
 				auditTrailButtonClickedSubscriptionRef.current()
 				auditTrailButtonClickedSubscriptionRef.current = null
@@ -775,6 +873,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		showTraceability,
 		showAuditTrail,
 		showProfileSetup,
+		showCompliance,
 		showAnnouncement,
 		certificationActive,
 		certificationProfile,
@@ -797,6 +896,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		navigateToTraceability,
 		navigateToAuditTrail,
 		navigateToProfileSetup,
+		navigateToCompliance,
 
 		// Hide functions
 		hideSettings,
@@ -805,6 +905,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		hideTraceability,
 		hideAuditTrail,
 		hideProfileSetup,
+		hideCompliance,
 		hideAnnouncement,
 		setShowAnnouncement,
 		setShouldShowAnnouncement: (value) =>

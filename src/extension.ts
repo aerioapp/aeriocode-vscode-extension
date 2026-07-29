@@ -13,6 +13,7 @@ import { sendHistoryButtonClickedEvent } from "./core/controller/ui/subscribeToH
 import { sendMcpButtonClickedEvent } from "./core/controller/ui/subscribeToMcpButtonClicked"
 import { sendSettingsButtonClickedEvent } from "./core/controller/ui/subscribeToSettingsButtonClicked"
 import { sendTraceabilityButtonClickedEvent } from "./core/controller/ui/subscribeToTraceabilityButtonClicked"
+import { sendComplianceButtonClickedEvent } from "./core/controller/ui/subscribeToComplianceButtonClicked"
 import { sendAuditTrailButtonClickedEvent } from "./core/controller/ui/subscribeToAuditTrailButtonClicked"
 import { WebviewProvider } from "./core/webview"
 import { createAeriocodeAPI } from "./exports"
@@ -35,6 +36,7 @@ import { telemetryService } from "./services/telemetry"
 import { SharedUriHandler } from "./services/uri/SharedUriHandler"
 import { ShowMessageType } from "./shared/proto/host/window"
 import { CertificationManager } from "./certification"
+import { ComplianceDiagnostics } from "./services/compliance/ComplianceDiagnostics"
 /*
 Built using https://github.com/microsoft/vscode-webview-ui-toolkit
 
@@ -216,18 +218,20 @@ export async function activate(context: vscode.ExtensionContext) {
 	)
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("aeriocode.traceabilityButtonClicked", (webview: any) => {
-			const isSidebar = !webview
-			const webviewType = isSidebar ? WebviewProviderTypeEnum.SIDEBAR : WebviewProviderTypeEnum.TAB
-			sendTraceabilityButtonClickedEvent(webviewType)
+		vscode.commands.registerCommand("aeriocode.traceabilityButtonClicked", () => {
+			// Broadcast rather than inferring the target from the menu argument. VS Code
+			// passes a different argument when the command is invoked from a submenu than
+			// from a toolbar button, so `!webview` resolved to the wrong provider type and
+			// the event was delivered to nobody. Undefined reaches every subscriber, and in
+			// practice only the visible webview has one.
+			sendTraceabilityButtonClickedEvent()
 		}),
 	)
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("aeriocode.auditTrailButtonClicked", (webview: any) => {
-			const isSidebar = !webview
-			const webviewType = isSidebar ? WebviewProviderTypeEnum.SIDEBAR : WebviewProviderTypeEnum.TAB
-			sendAuditTrailButtonClickedEvent(webviewType)
+		vscode.commands.registerCommand("aeriocode.auditTrailButtonClicked", () => {
+			// See traceabilityButtonClicked: broadcast instead of inferring from the argument.
+			sendAuditTrailButtonClickedEvent()
 		}),
 	)
 
@@ -582,6 +586,35 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			sendFocusChatInputEvent(clientId)
 			telemetryService.captureButtonClick("command_focusChatInput", activeWebview.controller?.task?.taskId)
+		}),
+	)
+
+	// Compliance checking, available independently of the AI. The shared instance is what
+	// the panel's gRPC handlers publish through, so both entry points write into one
+	// diagnostic collection instead of duplicating each other's squiggles.
+	const complianceDiagnostics = new ComplianceDiagnostics()
+	ComplianceDiagnostics.setInstance(complianceDiagnostics)
+	context.subscriptions.push(complianceDiagnostics)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.checkCompliance", async () => {
+			telemetryService.captureButtonClick("command_checkCompliance")
+			// Open the panel rather than running a quick-pick: the panel lets the user pick a
+			// profile, see which files will be sent, and act on the results in one place.
+			await vscode.commands.executeCommand("aeriocode.focusChatInput")
+			// Broadcast: hardcoding SIDEBAR here would have failed when the command is run
+			// from the editor-tab webview's title bar.
+			await sendComplianceButtonClickedEvent()
+		}),
+	)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.checkComplianceActiveFile", async () => {
+			telemetryService.captureButtonClick("command_checkComplianceActiveFile")
+			await complianceDiagnostics.checkActiveFile()
+		}),
+	)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.clearComplianceDiagnostics", () => {
+			complianceDiagnostics.clear()
 		}),
 	)
 

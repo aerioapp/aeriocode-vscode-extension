@@ -14,6 +14,7 @@ import {
 	SquareTerminal,
 	Webhook,
 	Shield,
+	Ruler,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useEvent } from "react-use"
@@ -22,6 +23,7 @@ import FeatureSettingsSection from "./sections/FeatureSettingsSection"
 import SectionHeader from "./SectionHeader"
 import TerminalSettingsSection from "./sections/TerminalSettingsSection"
 import CertificationSettingsSection from "./sections/CertificationSettingsSection"
+import ComplianceSettingsSection from "./sections/ComplianceSettingsSection"
 import ApiConfigurationSection from "./sections/ApiConfigurationSection"
 import GeneralSettingsSection from "./sections/GeneralSettingsSection"
 import BrowserSettingsSection from "./sections/BrowserSettingsSection"
@@ -90,6 +92,16 @@ export const SETTINGS_TABS: SettingsTab[] = [
 		tooltipText: "Certification Settings",
 		headerText: "Certification Settings",
 		icon: Shield,
+	},
+	{
+		id: "compliance",
+		name: "Compliance",
+		tooltipText: "Coding Standard Compliance",
+		headerText: "Coding Standard Compliance",
+		// A ruler: this measures code against a written standard. Not a shield (that is
+		// certification's assurance authority) and not scales/law (already the Aeriocode
+		// Rules glyph in the chat input).
+		icon: Ruler,
 	},
 	// Only show in dev mode
 	...(IS_DEV
@@ -317,6 +329,10 @@ const SettingsView = ({ onDone, targetSection }: SettingsViewProps) => {
 							{activeTab === "terminal" && <TerminalSettingsSection renderSectionHeader={renderSectionHeader} />}
 
 							{/* Certification Settings Tab */}
+							{activeTab === "compliance" && (
+								<ComplianceSettingsSection renderSectionHeader={renderSectionHeader} />
+							)}
+
 							{activeTab === "certification" && (
 								<CertificationSettingsSection renderSectionHeader={renderSectionHeader} />
 							)}

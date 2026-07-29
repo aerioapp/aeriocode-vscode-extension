@@ -63,3 +63,32 @@ export async function openFile(absolutePath: string) {
 		})
 	}
 }
+
+/**
+ * Open a file with the cursor on a given 1-based line.
+ *
+ * The host bridge's showTextDocument has no selection concept, so the reveal is done here
+ * where direct editor access is the norm, rather than in a controller handler.
+ */
+export async function openFileAtLine(absolutePath: string, line: number) {
+	try {
+		const document = await vscode.workspace.openTextDocument(vscode.Uri.file(absolutePath))
+
+		// Clamp: a finding from an earlier run can point past the end of a file the user has
+		// since shortened, and that should still open rather than throw.
+		const targetLine = Math.min(Math.max(0, line - 1), Math.max(0, document.lineCount - 1))
+		const position = new vscode.Position(targetLine, 0)
+
+		await HostProvider.window.showTextDocument({ path: absolutePath, options: { preview: false } })
+
+		// The host bridge returns no editor handle, so the reveal is done against the active
+		// editor — which showTextDocument has just made this document.
+		const editor = vscode.window.activeTextEditor
+		if (editor && arePathsEqual(editor.document.uri.fsPath, document.uri.fsPath)) {
+			editor.selection = new vscode.Selection(position, position)
+			editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter)
+		}
+	} catch (error) {
+		console.error("Could not open file at line:", error)
+	}
+}

@@ -67,3 +67,8 @@ old_docs/**
 e2e-build.js
 e2e.vsix
 test-results/
+
+# Coverage output. Only present when the extension is packaged after a local test run,
+# which CI never does — but there it added 4274 files to the .vsix, including HTML
+# reports that embed the absolute paths of the machine that produced them.
+coverage/

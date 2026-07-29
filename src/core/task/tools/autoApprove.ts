@@ -20,6 +20,10 @@ export class AutoApprove {
 				case "list_files":
 				case "list_code_definition_names":
 				case "search_files":
+				// compliance_check reads a file and sends it to the Aeriocode backend for
+				// analysis; it never modifies anything, so it follows the read-file policy.
+				// ToolExecutor additionally refuses to auto-approve its autofix mode.
+				case "compliance_check":
 					return [
 						this.autoApprovalSettings.actions.readFiles,
 						this.autoApprovalSettings.actions.readFilesExternally ?? false,

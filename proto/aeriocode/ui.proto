@@ -270,6 +270,8 @@ service UiService {
   
   // Subscribe to traceability button clicked events
   rpc subscribeToTraceabilityButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
+  // Opens the compliance panel from the extension host (command palette, editor action).
+  rpc subscribeToComplianceButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
 
   // Subscribe to audit trail button clicked events
   rpc subscribeToAuditTrailButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);

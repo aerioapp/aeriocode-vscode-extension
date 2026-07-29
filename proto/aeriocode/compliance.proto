@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package aeriocode;
+import "aeriocode/common.proto";
+option java_package = "bot.aeriocode.proto";
+option java_multiple_files = true;
+
+// ComplianceService - runs coding-standard compliance checks against workspace files.
+//
+// The analysis engine and the rule packs live in the Aeriocode backend, so this service
+// is deliberately standard-agnostic: it forwards whatever standard id the user picked and
+// renders whatever the backend returns. A newly published standard appears in the picker
+// without an extension release.
+service ComplianceService {
+  // Standards the backend has registered. Drives the profile picker.
+  rpc getComplianceStandards(EmptyRequest) returns (ComplianceStandardsResponse);
+
+  // Resolve a scope (active file, open editors, a folder, the workspace) into the
+  // concrete list of files that would be checked. The user reviews this before anything
+  // is sent, because analysis uploads file contents.
+  rpc listComplianceFiles(ListComplianceFilesRequest) returns (ComplianceFilesResponse);
+
+  // Analyze the given files and publish diagnostics.
+  rpc runComplianceCheck(RunComplianceCheckRequest) returns (ComplianceCheckResponse);
+
+  // Produce fixes and write them to disk. Always user-initiated from the panel.
+  rpc applyComplianceFixes(ApplyComplianceFixesRequest) returns (ApplyComplianceFixesResponse);
+
+  // Remove any published compliance diagnostics.
+  rpc clearComplianceDiagnostics(EmptyRequest) returns (Empty);
+
+  // Open a file at the line a finding points to. Separate from the shared
+  // openFileRelativePath RPC, which resolves a bare path and has no line concept.
+  rpc openComplianceFinding(OpenComplianceFindingRequest) returns (Empty);
+}
+
+message OpenComplianceFindingRequest {
+  Metadata metadata = 1;
+  string path = 2;
+  // 1-based, matching the finding.
+  int32 line = 3;
+}
+
+// --- Standards ---
+
+message ComplianceStandardsResponse {
+  repeated ComplianceStandard standards = 1;
+  // Set when the standards could not be fetched (offline, signed out, backend down).
+  string error = 2;
+}
+
+message ComplianceStandard {
+  string id = 1;
+  string name = 2;
+  string title = 3;
+  string version = 4;
+  repeated string languages = 5;
+  int32 rules_total = 6;
+  int32 rules_automated = 7;
+  int32 rules_manual_review = 8;
+  int32 rules_absent_from_source = 9;
+  int32 fixes_safe = 10;
+  int32 fixes_review = 11;
+}
+
+// --- File selection ---
+
+// Which files a scope resolves to. Presets rather than a file tree: the common case is
+// "the file I am looking at", and the backend caps a request at 50 files / 2 MB, so an
+// unbounded tree would mostly offer choices the request cannot accept.
+enum ComplianceScope {
+  COMPLIANCE_SCOPE_ACTIVE_FILE = 0;
+  COMPLIANCE_SCOPE_OPEN_EDITORS = 1;
+  COMPLIANCE_SCOPE_ACTIVE_FOLDER = 2;
+  COMPLIANCE_SCOPE_WORKSPACE = 3;
+}
+
+message ListComplianceFilesRequest {
+  Metadata metadata = 1;
+  ComplianceScope scope = 2;
+  // Standard id, so only files in a language the standard targets are offered.
+  string standard = 3;
+}
+
+message ComplianceFilesResponse {
+  repeated ComplianceFile files = 1;
+  // Human-readable description of where these came from, e.g. "src/flight" or
+  // "3 open editors". Shown so the user knows what the scope resolved to.
+  string scope_label = 2;
+  // Set when the scope produced nothing, explaining why.
+  string empty_reason = 3;
+  // Files found beyond the per-request cap; they are excluded from `files`.
+  int32 excluded_over_limit = 4;
+  int32 max_files = 5;
+  int64 max_total_bytes = 6;
+}
+
+message ComplianceFile {
+  // Workspace-relative path, used as the display label and the request key.
+  string path = 1;
+  string absolute_path = 2;
+  int64 size_bytes = 3;
+  // False when .aeriocodeignore blocks the file; it is listed but cannot be selected.
+  bool selectable = 4;
+  string blocked_reason = 5;
+}
+
+// --- Analysis ---
+
+message RunComplianceCheckRequest {
+  Metadata metadata = 1;
+  string standard = 2;
+  repeated string paths = 3;
+}
+
+message ComplianceCheckResponse {
+  string standard = 1;
+  string standard_name = 2;
+  string standard_version = 3;
+  repeated ComplianceFinding findings = 4;
+  ComplianceSummary summary = 5;
+  repeated ComplianceFileNote skipped = 6;
+  repeated ComplianceFileNote parse_errors = 7;
+  // Set when the request failed outright; findings are then empty.
+  string error = 8;
+}
+
+message ComplianceFinding {
+  string rule_id = 1;
+  string severity = 2;
+  bool mandatory = 3;
+  string file = 4;
+  int32 line = 5;
+  int32 column = 6;
+  int32 end_line = 7;
+  int32 end_column = 8;
+  string message = 9;
+  string confidence = 10;
+  // "safe", "review", or empty when no mechanical fix exists.
+  string fixable = 11;
+  string rule_statement = 12;
+  string rule_rationale = 13;
+}
+
+message ComplianceSummary {
+  int32 files_analyzed = 1;
+  int32 total_findings = 2;
+  int32 returned_findings = 3;
+  bool truncated = 4;
+  int32 rules_violated = 5;
+  int32 mandatory_violations = 6;
+  bool mandatory_clean = 7;
+  // -1 when the backend reported no score.
+  int32 score_tenths = 8;
+  string score_definition = 9;
+  int32 rules_in_standard = 10;
+  int32 rules_automated = 11;
+  int32 rules_manual_review = 12;
+  int32 rules_absent_from_source = 13;
+  repeated string absent_rule_ids = 14;
+}
+
+message ComplianceFileNote {
+  string path = 1;
+  string reason = 2;
+}
+
+// --- Autofix ---
+
+message ApplyComplianceFixesRequest {
+  Metadata metadata = 1;
+  string standard = 2;
+  repeated string paths = 3;
+  // "safe" or "review".
+  string tier = 4;
+  // Empty means every rule with a fix at the requested tier.
+  repeated string rule_ids = 5;
+}
+
+message ApplyComplianceFixesResponse {
+  int32 files_changed = 1;
+  int32 fixes_applied = 2;
+  int32 fixes_skipped = 3;
+  repeated ComplianceFixedFile files = 4;
+  string error = 5;
+}
+
+message ComplianceFixedFile {
+  string path = 1;
+  bool changed = 2;
+  int32 fixes_applied = 3;
+  repeated string applied_rule_ids = 4;
+}

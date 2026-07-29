@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.6]
+
+### Compliance Checking
+
+- **JF-AV++ compliance checking** — Check C++ against the JF-AV++ coding standard (2RDU00001 Rev C) from the new Compliance panel, from the command palette ("Aeriocode: Check Compliance"), or against the active file. Findings carry the rule id, severity, line, and the rule's own text and rationale. Requires a signed-in Aerio account.
+- **Findings in the Problems panel** — Violations are published as diagnostics, so they appear inline in the editor and in Problems alongside the rest of your tooling. Mandatory ("shall" / "will") rules are reported as errors and advisory ("should") rules as warnings, which makes the Problems error count the number of things that actually block conformance.
+- **Tiered autofix** — Mechanical fixes are split in two. _Safe_ fixes are fully determined by the syntax and cannot change behaviour: literal and hexadecimal casing, adding braces, comment style, include notation, octal constants. _Review_ fixes are mechanically correct but carry semantic risk — `#define` to `const`, C-style cast to `static_cast`, splitting multi-variable declarations — and are applied only when you ask for them explicitly. Nothing is written until you choose a tier, and fixes land in the editor's undo stack.
+- **The assistant can check its own work** — In JF-AV++ mode the assistant can run the compliance check on the C++ it just wrote and correct violations before presenting the result. Analysis is read-only and auto-approvable; autofix is not, and is unavailable in Plan mode.
+- **Coverage is always stated** — Every result reports how many rules were checked automatically and how many need human review, so a clean run over a subset of the standard is never presented as full conformance.
+
+### UI
+
+- **Compliance & Certification menu** — Traceability and Audit Trail move into a single sidebar submenu alongside the new compliance check, rather than each taking a top-level slot.
+- **Jump to a finding** — Selecting a finding opens the file with the cursor on the offending line.
+
 ## [0.0.5]
 
 ### Bug Fixes

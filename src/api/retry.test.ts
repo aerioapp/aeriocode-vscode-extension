@@ -2,6 +2,31 @@ import { describe, it } from "mocha"
 import "should"
 import { withRetry } from "./retry"
 
+/**
+ * Delay a retry is allowed to overshoot by before the assertion is measuring the machine
+ * rather than the decorator.
+ *
+ * These tests previously pinned elapsed time to within ±10 ms of the target. That
+ * tolerance measures how loaded the host is, not how the decorator behaves — a 10 ms
+ * setTimeout routinely lands at 40 ms under load, and the suite failed about half the
+ * time. The ceiling below is far above any plausible jitter while still sitting well
+ * under the delay each test is proving was *not* used.
+ */
+const JITTER_CEILING_MS = 500
+
+/**
+ * Assert a retry actually waited, without asserting scheduler precision.
+ *
+ * The floor is the point: it proves the decorator slept for the delay it chose instead of
+ * retrying immediately. Only use this where a wait is genuinely expected — see the
+ * retry-after tests, where the header floors to a zero-second wait by design.
+ */
+function assertWaitedAbout(duration: number, expected: number) {
+	// setTimeout may fire a millisecond early; below that, no wait happened at all.
+	duration.should.be.aboveOrEqual(Math.max(0, expected - 2))
+	duration.should.be.below(JITTER_CEILING_MS)
+}
+
 describe("Retry Decorator", () => {
 	describe("withRetry", () => {
 		it("should not retry on success", async () => {
@@ -95,7 +120,10 @@ describe("Retry Decorator", () => {
 			}
 
 			const duration = Date.now() - startTime
-			duration.should.be.approximately(10, 10) // Allow 10ms variance
+			// Retry-After is defined in whole seconds and the decorator parses it with parseInt,
+			// so "0.01" floors to a zero-second wait. What this pins is that the header was
+			// consulted at all: had it been ignored, the 1000ms baseDelay would have applied.
+			duration.should.be.below(JITTER_CEILING_MS)
 			callCount.should.equal(2)
 			result.should.deepEqual(["success after retry"])
 		})
@@ -126,7 +154,9 @@ describe("Retry Decorator", () => {
 			}
 
 			const duration = Date.now() - startTime
-			duration.should.be.approximately(10, 10) // Allow 10ms variance
+			// Same whole-second truncation as above: the timestamp resolves to roughly now, so
+			// the wait is zero. The assertion is that the header won over the 1000ms baseDelay.
+			duration.should.be.below(JITTER_CEILING_MS)
 			callCount.should.equal(2)
 			result.should.deepEqual(["success after retry"])
 		})
@@ -154,8 +184,8 @@ describe("Retry Decorator", () => {
 			}
 
 			const duration = Date.now() - startTime
-			// First retry should be after baseDelay (10ms)
-			duration.should.be.approximately(10, 10)
+			// First retry should be after baseDelay (10ms).
+			assertWaitedAbout(duration, 10)
 			callCount.should.equal(2)
 			result.should.deepEqual(["success after retry"])
 		})
@@ -183,8 +213,8 @@ describe("Retry Decorator", () => {
 			}
 
 			const duration = Date.now() - startTime
-			// Both retries should be capped at maxDelay (10ms each)
-			duration.should.be.approximately(20, 20)
+			// Both retries capped at maxDelay (10ms each), so well under the 2x50ms baseDelay.
+			assertWaitedAbout(duration, 20)
 			callCount.should.equal(3)
 			result.should.deepEqual(["success after retries"])
 		})

@@ -2,7 +2,7 @@
 	"name": "Aerio-Code",
 	"displayName": "Aerio Code",
 	"description": "AI-powered aerospace and engineering coding assistant for VS Code.",
-	"version": "0.0.5",
+	"version": "0.0.6",
 	"icon": "assets/icons/icon.png",
 	"engines": {
 		"vscode": "^1.84.0"
@@ -159,7 +159,7 @@
 			{
 				"command": "aeriocode.auditTrailButtonClicked",
 				"title": "Audit Trail",
-				"icon": "$(shield)"
+				"icon": "$(archive)"
 			},
 			{
 				"command": "aeriocode.openInNewTab",
@@ -248,6 +248,23 @@
 				"title": "Add to Aeriocode Chat",
 				"category": "Aeriocode",
 				"icon": "$(link-external)"
+			},
+			{
+				"command": "aeriocode.checkCompliance",
+				"title": "Check Compliance",
+				"category": "Aeriocode",
+				"icon": "$(symbol-ruler)"
+			},
+			{
+				"command": "aeriocode.checkComplianceActiveFile",
+				"title": "Check Compliance of Active File",
+				"category": "Aeriocode",
+				"icon": "$(symbol-ruler)"
+			},
+			{
+				"command": "aeriocode.clearComplianceDiagnostics",
+				"title": "Clear Compliance Diagnostics",
+				"category": "Aeriocode"
 			}
 		],
 		"keybindings": [
@@ -295,14 +312,9 @@
 					"when": "view == aeriocode.SidebarProvider"
 				},
 				{
-					"command": "aeriocode.traceabilityButtonClicked",
+					"submenu": "aeriocode.assuranceMenu",
 					"group": "navigation@4",
-					"when": "view == aeriocode.SidebarProvider && aeriocode.certificationActive"
-				},
-				{
-					"command": "aeriocode.auditTrailButtonClicked",
-					"group": "navigation@5",
-					"when": "view == aeriocode.SidebarProvider && aeriocode.certificationActive"
+					"when": "view == aeriocode.SidebarProvider"
 				},
 				{
 					"command": "aeriocode.popoutButtonClicked",
@@ -337,14 +349,9 @@
 					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				},
 				{
-					"command": "aeriocode.traceabilityButtonClicked",
+					"submenu": "aeriocode.assuranceMenu",
 					"group": "navigation@4",
-					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider && aeriocode.certificationActive"
-				},
-				{
-					"command": "aeriocode.auditTrailButtonClicked",
-					"group": "navigation@5",
-					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider && aeriocode.certificationActive"
+					"when": "activeWebviewPanelId == aeriocode.TabPanelProvider"
 				},
 				{
 					"command": "aeriocode.popoutButtonClicked",
@@ -433,12 +440,35 @@
 					"group": "inline",
 					"when": "commentController == aeriocode-ai-review"
 				}
+			],
+			"aeriocode.assuranceMenu": [
+				{
+					"command": "aeriocode.checkCompliance",
+					"group": "1_check@1"
+				},
+				{
+					"command": "aeriocode.traceabilityButtonClicked",
+					"group": "2_certification@1",
+					"when": "aeriocode.certificationActive"
+				},
+				{
+					"command": "aeriocode.auditTrailButtonClicked",
+					"group": "2_certification@2",
+					"when": "aeriocode.certificationActive"
+				}
 			]
 		},
 		"configuration": {
 			"title": "Aeriocode",
 			"properties": {}
-		}
+		},
+		"submenus": [
+			{
+				"id": "aeriocode.assuranceMenu",
+				"label": "Compliance & Certification",
+				"icon": "$(verified)"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run package",
@@ -489,6 +519,7 @@
 	"devDependencies": {
 		"@bufbuild/buf": "^1.54.0",
 		"@changesets/cli": "^2.27.12",
+		"@tailwindcss/vite": "^4.1.14",
 		"@types/chai": "^5.0.1",
 		"@types/clone-deep": "^4.0.4",
 		"@types/diff": "^5.2.1",
@@ -527,6 +558,7 @@
 		"rimraf": "^6.0.1",
 		"should": "^13.2.3",
 		"sinon": "^19.0.2",
+		"tailwindcss": "^4.1.14",
 		"tree-kill": "^1.2.2",
 		"ts-node": "^10.9.2",
 		"ts-proto": "^2.6.1",
@@ -556,7 +588,6 @@
 		"@playwright/test": "^1.55.1",
 		"@sentry/browser": "^9.12.0",
 		"@streamparser/json": "^0.0.22",
-		"@tailwindcss/vite": "^4.1.14",
 		"@types/uuid": "^10.0.0",
 		"@vscode/codicons": "^0.0.36",
 		"archiver": "^7.0.1",
@@ -608,7 +639,6 @@
 		"simple-git": "3.36.0",
 		"sql.js": "^1.14.1",
 		"strip-ansi": "^7.1.2",
-		"tailwindcss": "^4.1.14",
 		"tree-sitter-wasms": "^0.1.11",
 		"ts-morph": "^25.0.1",
 		"turndown": "^7.2.0",

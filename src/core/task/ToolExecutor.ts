@@ -7,6 +7,7 @@ import { findLast, findLastIndex, parsePartialArrayString } from "@/shared/array
 import { createAndOpenGitHubIssue } from "@/utils/github-url-utils"
 import { getReadablePath, isLocatedInWorkspace } from "@/utils/path"
 import { CertificationManager } from "@/certification"
+import { ComplianceClient } from "@/services/compliance/ComplianceClient"
 import Anthropic from "@anthropic-ai/sdk"
 import { ApiHandler } from "@api/index"
 import { FileContextTracker } from "@core/context/context-tracking/FileContextTracker"
@@ -61,6 +62,7 @@ import { CacheService } from "../storage/CacheService"
 import { TaskState } from "./TaskState"
 import { MessageStateHandler } from "./message-state"
 import { AutoApprove } from "./tools/autoApprove"
+import { executeComplianceCheck } from "./tools/executeComplianceCheck"
 import { showNotificationForApprovalIfAutoApprovalEnabled } from "./utils"
 import { Mode } from "@shared/storage/types"
 import { getExtensionId } from "../../config/extensionConfig"
@@ -148,6 +150,9 @@ export class ToolExecutor {
 	private isPlanModeToolRestricted(toolName: ToolUseName): boolean {
 		const planModeRestrictedTools: ToolUseName[] = ["write_to_file", "replace_in_file"]
 		return planModeRestrictedTools.includes(toolName)
+		// compliance_check is deliberately absent: analysis is read-only and useful while
+		// planning. Its autofix mode produces content but never writes it — applying a fix
+		// still requires write_to_file / replace_in_file, which are restricted here.
 	}
 
 	public updateMode(mode: Mode): void {
@@ -230,6 +235,8 @@ export class ToolExecutor {
 				return `[${block.name} for '${block.params.path}']`
 			case "web_fetch":
 				return `[${block.name} for '${block.params.url}']`
+			case "compliance_check":
+				return `[${block.name} ${block.params.mode === "autofix" ? "autofix" : "analyze"} '${block.params.path}' against ${block.params.standard}]`
 			default:
 				return `[${block.name}]`
 		}
@@ -2157,6 +2164,55 @@ export class ToolExecutor {
 					await this.saveCheckpoint()
 					break
 				}
+			}
+			case "compliance_check": {
+				// The body lives in executeComplianceCheck so it can be tested against a stub
+				// host; everything it touches is passed in explicitly below.
+				await executeComplianceCheck(block, {
+					cwd: this.cwd,
+					say: this.say,
+					ask: this.ask,
+					askApproval: (toolBlock, message) => this.askApproval("tool", toolBlock, message),
+					pushToolResult: this.pushToolResult,
+					sayAndCreateMissingParamError: this.sayAndCreateMissingParamError,
+					removeLastPartialMessageIfExistsWithType: this.removeLastPartialMessageIfExistsWithType,
+					removeClosingTag: this.removeClosingTag,
+					notifyForApproval: (message) =>
+						showNotificationForApprovalIfAutoApprovalEnabled(
+							message,
+							this.autoApprovalSettings.enabled,
+							this.autoApprovalSettings.enableNotifications,
+						),
+					shouldAutoApproveToolWithPath: (toolName, relPath) => this.shouldAutoApproveToolWithPath(toolName, relPath),
+					validateFileAccess: (relPath) => this.aeriocodeIgnoreController.validateAccess(relPath),
+					incrementMistakeCount: () => {
+						this.taskState.consecutiveMistakeCount++
+					},
+					resetMistakeCount: () => {
+						this.taskState.consecutiveMistakeCount = 0
+					},
+					countAutoApprovedRequest: () => {
+						this.taskState.consecutiveAutoApprovedRequestsCount++
+					},
+					captureToolUsage: (autoApproved, approved) =>
+						telemetryService.captureToolUsage(
+							this.taskId,
+							"compliance_check",
+							this.api.getModel().id,
+							autoApproved,
+							approved,
+						),
+					saveCheckpoint: () => this.saveCheckpoint(),
+					handleError: this.handleError,
+					isLocatedInWorkspace,
+					getReadablePath,
+					fileExists: fileExistsAtPath,
+					readFile: extractTextFromFile,
+					analyze: (standard, files) => ComplianceClient.getInstance().analyze(standard, files),
+					autofix: (standard, files, tier, ruleIds) =>
+						ComplianceClient.getInstance().autofix(standard, files, tier, ruleIds),
+				})
+				break
 			}
 			case "plan_mode_respond": {
 				const response: string | undefined = block.params.response

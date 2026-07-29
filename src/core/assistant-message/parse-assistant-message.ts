@@ -406,6 +406,15 @@ export function parseAssistantMessageV3(assistantMessage: string): AssistantMess
 					}
 				}
 
+				if (currentInvokeName === "ComplianceCheck") {
+					currentToolUse = {
+						type: "tool_use",
+						name: "compliance_check",
+						params: {},
+						partial: true,
+					}
+				}
+
 				if (currentInvokeName === "UseMCPTool") {
 					currentToolUse = {
 						type: "tool_use",

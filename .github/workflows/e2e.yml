@@ -56,13 +56,26 @@ jobs:
                   path: webview-ui/node_modules
                   key: ${{ runner.os }}-npm-webview-${{ hashFiles('webview-ui/package-lock.json') }}
 
-            # Cache VS Code installation
+            # Cache VS Code installation.
+            #
+            # Keyed on .vscode-test.mjs, which is what selects the VS Code build, and
+            # deliberately NOT on package.json: the extension's own version has no bearing
+            # on which VS Code gets downloaded, and including it meant every release bumped
+            # the key, missed the exact match, and fell through restore-keys to an older
+            # cache. The download then happened anyway, so the cache bought nothing while
+            # making a partial restore more likely.
+            #
+            # A restored install is not trusted on its own — resolveVSCodeExecutable() in
+            # src/test/e2e/utils/helpers.ts checks the binary is really there and
+            # re-downloads if it is not, because a macOS .app bundle that comes back from
+            # the cache incomplete still carries the marker file that makes
+            # @vscode/test-electron skip the download.
             - name: Cache VS Code
               uses: actions/cache@v5
               id: vscode-cache
               with:
                   path: .vscode-test
-                  key: vscode-${{ runner.os }}-stable-${{ hashFiles('.vscode-test.mjs', 'package.json') }}
+                  key: vscode-${{ runner.os }}-stable-${{ hashFiles('.vscode-test.mjs') }}
                   restore-keys: |
                       vscode-${{ runner.os }}-stable-
 

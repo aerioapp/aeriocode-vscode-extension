@@ -1,26 +1,15 @@
 import { expect } from "chai"
+import { calculateEnforcement } from "../coverageEnforcement"
 import type { CertificationProfile } from "../types"
 
-// Test the enforcement logic directly (extracted for testability)
-function calculateEnforcement(profile: CertificationProfile, profileLevel: string, totalReqs: number, tracedCount: number) {
-	const levelConfig = profile.levels[profileLevel]
-	if (!levelConfig) return null
-	const coveragePercent = totalReqs > 0 ? Math.round((tracedCount / totalReqs) * 100) : 0
-	const requiredCoverage = levelConfig.statement_coverage
-	const passed = coveragePercent >= requiredCoverage
-	return {
-		requirements_met: tracedCount,
-		requirements_total: totalReqs,
-		passed,
-		level_id: profileLevel,
-		required_coverage: requiredCoverage,
-		actual_coverage: coveragePercent,
-		coverage_metric: levelConfig.coverage_metric || "requirements-based",
-		message: passed
-			? `Coverage meets ${levelConfig.label} requirements (${coveragePercent}% >= ${requiredCoverage}%)`
-			: `Coverage below ${levelConfig.label} requirements (${coveragePercent}% < ${requiredCoverage}%)`,
-	}
-}
+/**
+ * These tests import the production function. An earlier version of this file defined its
+ * own copy of the enforcement logic, which meant it verified the copy and not the code
+ * that ships — and the copy was wrong in the same way the original was, so a DAL A project
+ * with zero tests reporting "Coverage meets DAL A requirements" passed every assertion
+ * here. A test that restates the implementation cannot fail when the implementation is
+ * wrong.
+ */
 
 const mockProfile: CertificationProfile = {
 	standard: "DO-178C",
@@ -54,47 +43,66 @@ const mockProfile: CertificationProfile = {
 }
 
 describe("CoverageEnforcement", () => {
-	it("passes when coverage meets level requirement", () => {
+	it("reports traceability complete when every requirement is linked", () => {
 		const result = calculateEnforcement(mockProfile, "DAL_A", 10, 10)
 		expect(result).to.not.be.null
-		expect(result!.passed).to.be.true
-		expect(result!.actual_coverage).to.equal(100)
+		expect(result!.traceability_passed).to.be.true
+		expect(result!.traceability_coverage).to.equal(100)
 	})
 
-	it("fails when coverage is below level requirement", () => {
+	it("reports traceability incomplete when requirements are unlinked", () => {
 		const result = calculateEnforcement(mockProfile, "DAL_A", 10, 5)
 		expect(result).to.not.be.null
-		expect(result!.passed).to.be.false
-		expect(result!.actual_coverage).to.equal(50)
+		expect(result!.traceability_passed).to.be.false
+		expect(result!.traceability_coverage).to.equal(50)
 	})
 
 	it("returns null for unknown level", () => {
-		const result = calculateEnforcement(mockProfile, "UNKNOWN", 10, 10)
-		expect(result).to.be.null
+		expect(calculateEnforcement(mockProfile, "UNKNOWN", 10, 10)).to.be.null
 	})
 
-	it("handles zero requirements", () => {
+	it("does not treat a project with no requirements as fully traced", () => {
 		const result = calculateEnforcement(mockProfile, "DAL_A", 0, 0)
 		expect(result).to.not.be.null
-		expect(result!.passed).to.be.false
-		expect(result!.actual_coverage).to.equal(0)
+		expect(result!.traceability_passed).to.be.false
+		expect(result!.traceability_coverage).to.equal(0)
 	})
 
-	it("includes correct message on pass", () => {
-		const result = calculateEnforcement(mockProfile, "DAL_A", 10, 10)
-		expect(result!.message).to.include("meets")
-		expect(result!.message).to.include("DAL A")
+	it("requires full traceability regardless of assurance level", () => {
+		// DAL C is the least demanding level in this profile, and it still cannot reach a
+		// traceability pass on partial links.
+		const dalC = calculateEnforcement(mockProfile, "DAL_C", 10, 9)
+		expect(dalC!.required_traceability_coverage).to.equal(100)
+		expect(dalC!.traceability_passed).to.be.false
 	})
 
-	it("includes correct message on fail", () => {
-		const result = calculateEnforcement(mockProfile, "DAL_A", 10, 5)
-		expect(result!.message).to.include("below")
-		expect(result!.message).to.include("DAL A")
-	})
+	describe("structural coverage is never inferred from traceability", () => {
+		it("reports structural coverage as unavailable even at 100% traceability", () => {
+			const result = calculateEnforcement(mockProfile, "DAL_A", 10, 10)
+			expect(result!.structural_coverage_available).to.be.false
+			expect(result!.structural_coverage).to.be.null
+		})
 
-	it("includes coverage_metric from level config", () => {
-		const result = calculateEnforcement(mockProfile, "DAL_A", 10, 10)
-		expect(result!.coverage_metric).to.equal("MC/DC")
+		it("names the metric the level requires without claiming to have measured it", () => {
+			expect(calculateEnforcement(mockProfile, "DAL_A", 10, 10)!.required_structural_metric).to.equal("MC/DC")
+			expect(calculateEnforcement(mockProfile, "DAL_C", 10, 10)!.required_structural_metric).to.equal("Statement")
+		})
+
+		it("says structural coverage was not measured, even when traceability passes", () => {
+			// The regression guard. This message is what a user reads to decide whether the
+			// level's objectives are met; it must never imply MC/DC was evaluated.
+			const message = calculateEnforcement(mockProfile, "DAL_A", 10, 10)!.message
+			expect(message).to.include("MC/DC")
+			expect(message).to.include("has not been measured")
+			expect(message).to.not.match(/coverage meets/i)
+		})
+
+		it("reports the shortfall and the unmeasured metric when traceability fails", () => {
+			const message = calculateEnforcement(mockProfile, "DAL_A", 10, 5)!.message
+			expect(message).to.include("DAL A")
+			expect(message).to.include("Traceability incomplete")
+			expect(message).to.include("has not been measured")
+		})
 	})
 
 	it("works with non-DO-178C profiles", () => {
@@ -118,10 +126,11 @@ describe("CoverageEnforcement", () => {
 			requirement_levels: [],
 			traceability_directions: [],
 		}
+
 		const result = calculateEnforcement(isoProfile, "ASIL_B", 10, 8)
 		expect(result).to.not.be.null
-		expect(result!.passed).to.be.false
-		expect(result!.coverage_metric).to.equal("Decision")
+		expect(result!.traceability_passed).to.be.false
+		expect(result!.required_structural_metric).to.equal("Decision")
 		expect(result!.message).to.include("ASIL B")
 	})
 })

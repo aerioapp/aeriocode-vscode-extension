@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { ApiHandler, buildApiHandler } from "@api/index"
+import { resolveComplianceProfile } from "@/services/compliance/ComplianceProfileResolver"
 import { AeriocodeHandler } from "@api/providers/aeriocode"
 import { CertificationManager } from "@/certification"
 import { CertificationInstructionsBuilder } from "@/certification/CertificationInstructionsBuilder"
@@ -69,7 +70,7 @@ import { sendPartialMessageEvent } from "@core/controller/ui/subscribeToPartialM
 import { sendRelinquishControlEvent } from "@core/controller/ui/subscribeToRelinquishControl"
 import { AeriocodeIgnoreController } from "@core/ignore/AeriocodeIgnoreController"
 import { parseMentions } from "@core/mentions"
-import { formatResponse } from "@core/prompts/responses"
+import { detectMalformedToolUse, formatResponse } from "@core/prompts/responses"
 import { addUserInstructions, SYSTEM_PROMPT } from "@core/prompts/system"
 import { parseSlashCommands } from "@core/slash-commands"
 import {
@@ -314,6 +315,10 @@ export class Task {
 				resourceTemplates: server.resourceTemplates,
 			})),
 			browserSettings: this.browserSettings,
+			// Resolved per workspace, so a certified repository and an internal tool open in two
+			// windows each get their own answer with nothing to remember. Absent when no standard
+			// is set, which is the default and means no behaviour change at all.
+			complianceProfile: resolveComplianceProfile(vscode.Uri.file(this.cwd)) ?? undefined,
 		}
 
 		this.contextInfo = contextInfo
@@ -2355,6 +2360,8 @@ export class Task {
 			this.taskState.currentStreamingContentIndex = 0
 			this.taskState.assistantMessageContent = []
 			this.taskState.didCompleteReadingStream = false
+			this.taskState.didTruncateResponse = false
+			this.taskState.didDropIncompleteToolUse = false
 			this.taskState.userMessageContent = []
 			this.taskState.userMessageContentReady = false
 			this.taskState.didRejectTool = false
@@ -2375,6 +2382,12 @@ export class Task {
 						continue
 					}
 					switch (chunk.type) {
+						case "truncated":
+							// Recorded, not acted on here: the content of this stream is still worth
+							// presenting, and what changes is only how the trailing partial block is
+							// finalised once the stream ends.
+							this.taskState.didTruncateResponse = true
+							break
 						case "usage":
 							didReceiveUsageChunk = true
 							inputTokens += chunk.inputTokens
@@ -2494,9 +2507,31 @@ export class Task {
 			// set any blocks to be complete to allow presentAssistantMessage to finish and set userMessageContentReady to true
 			// (could be a text block that had no subsequent tool uses, or a text block at the very end, or an invalid tool use, etc. whatever the case, presentAssistantMessage relies on these blocks either to be completed or the user to reject a block in order to proceed and eventually set userMessageContentReady to true)
 			const partialBlocks = this.taskState.assistantMessageContent.filter((block) => block.partial)
+
+			// A *text* block left partial is fine to complete — there was simply no tool call after it.
+			// A **tool_use** left partial is not: partial means the parser never saw the closing tag,
+			// so the parameters are whatever had arrived when the stream stopped. Completing one is
+			// what executes a `write_to_file` whose `<content>` was cut off, saving a source file that
+			// stops mid-function and looks whole — then analysed, then reported on, in a product whose
+			// whole claim is that generated code is verifiable.
+			//
+			// ⚠️ Deliberately not gated on the stream having reported truncation. It was, and that was
+			// too narrow: a benchmark run caught the model stopping 609 characters into a file with the
+			// provider reporting `finish_reason: "stop"`. An unterminated tool call is incomplete
+			// whatever the provider says about why it ended, and only the missing closing tag is
+			// evidence either way.
+			//
+			// Dropping the block loses nothing — the model is told below and reissues the call.
+			const droppedIncompleteToolUse = partialBlocks.some((block) => block.type === "tool_use")
+			if (droppedIncompleteToolUse) {
+				this.taskState.assistantMessageContent = this.taskState.assistantMessageContent.filter(
+					(block) => !(block.partial && block.type === "tool_use"),
+				)
+			}
 			partialBlocks.forEach((block) => {
 				block.partial = false
 			})
+			this.taskState.didDropIncompleteToolUse = droppedIncompleteToolUse
 			// this.assistantMessageContent.forEach((e) => (e.partial = false)) // can't just do this bc a tool could be in the middle of executing ()
 			if (partialBlocks.length > 0) {
 				try {
@@ -2550,11 +2585,35 @@ export class Task {
 				// if the model did not tool use, then we need to tell it to either use a tool or attempt_completion
 				const didToolUse = this.taskState.assistantMessageContent.some((block) => block.type === "tool_use")
 
-				if (!didToolUse) {
-					// normal request where tool use is required
+				if (this.taskState.didDropIncompleteToolUse && !this.taskState.didTruncateResponse) {
+					// Unterminated, but the provider did not say why — so do not assert a cause. Telling
+					// the model it ran out of budget when it did not sends it shrinking its output for
+					// no reason.
 					this.taskState.userMessageContent.push({
 						type: "text",
-						text: formatResponse.noToolsUsed(),
+						text: formatResponse.incompleteToolUse(),
+					})
+				} else if (this.taskState.didTruncateResponse) {
+					// Said plainly, and before the no-tool nudge, because the two have different
+					// remedies: a model that forgot to use a tool should retry the same way, and a
+					// model that was cut off should write less per turn. Telling it only "you did not
+					// use a tool" invites it to reissue the same oversized response and be cut off in
+					// the same place.
+					//
+					// Not counted as a mistake: being truncated is not the model's error.
+					this.taskState.userMessageContent.push({
+						type: "text",
+						text: formatResponse.responseTruncated(),
+					})
+				} else if (!didToolUse) {
+					// A call under a name that is not a tool is not "no tool use", and saying so leaves
+					// the model with nothing to correct — it knows it tried. Name the tag instead.
+					const malformed = detectMalformedToolUse(assistantMessage)
+					this.taskState.userMessageContent.push({
+						type: "text",
+						text: malformed
+							? formatResponse.malformedToolUse(malformed.tag, malformed.suggestedTool)
+							: formatResponse.noToolsUsed(),
 					})
 					this.taskState.consecutiveMistakeCount++
 				}

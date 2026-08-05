@@ -32,6 +32,43 @@ service ComplianceService {
   // Open a file at the line a finding points to. Separate from the shared
   // openFileRelativePath RPC, which resolves a bare path and has no line concept.
   rpc openComplianceFinding(OpenComplianceFindingRequest) returns (Empty);
+
+  // The standard and level in force, so the picker can show what is actually applied
+  // rather than what was last clicked. Resolved through the same resolver the request
+  // path and the gate use, because a picker showing a different answer from the one the
+  // model is instructed under is worse than no picker.
+  rpc getComplianceProfile(EmptyRequest) returns (ComplianceProfileResponse);
+
+  // Set the standard and level for the workspace. Writes the same settings a user would
+  // edit by hand, so the two routes cannot disagree.
+  rpc setComplianceProfile(SetComplianceProfileRequest) returns (ComplianceProfileResponse);
+}
+
+// The profile in force for the workspace.
+message ComplianceProfileResponse {
+  // Empty when no standard is set, which is the off state rather than an error.
+  string standard = 1;
+  // Empty when the workspace declared a standard but not an assurance level, in which
+  // case the standard applies in full — the stricter reading.
+  string level = 2;
+  string regime = 3;
+  bool gate_enabled = 4;
+  // False when no folder is open, so nothing can be persisted and the picker says so
+  // instead of silently discarding the choice.
+  bool can_persist = 5;
+  // "certification", "workspace" or "none". A level declared through certification profile setup
+  // is not a free choice here, and a picker that offered it as one would be the second source of
+  // truth this field exists to remove.
+  string level_source = 6;
+}
+
+message SetComplianceProfileRequest {
+  Metadata metadata = 1;
+  // Empty turns enforcement off.
+  string standard = 2;
+  string level = 3;
+  string regime = 4;
+  bool gate_enabled = 5;
 }
 
 message OpenComplianceFindingRequest {
@@ -138,7 +175,8 @@ message ComplianceFinding {
   string confidence = 10;
   // "safe", "review", or empty when no mechanical fix exists.
   string fixable = 11;
-  string rule_statement = 12;
+  // Aerio's own description of what the rule requires — never the standard's wording.
+  string rule_summary = 12;
   string rule_rationale = 13;
 }
 

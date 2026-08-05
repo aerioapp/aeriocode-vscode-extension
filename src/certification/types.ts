@@ -198,15 +198,98 @@ export interface GenerationStartParams {
 	requirement_tags_found?: string[]
 }
 
+/**
+ * What a decision was made about.
+ *
+ * A compliance autofix is deterministic tool output, not a model suggestion. Recording it
+ * against `ai_suggestion` — or worse, writing a synthetic row into `ai_generations` to
+ * give it a generation to point at — would corrupt exactly the data a certification
+ * authority scrutinises most closely: what the AI actually produced.
+ */
+export type DecisionSubjectType = "ai_suggestion" | "compliance_autofix"
+
 // Human decision capture params
 export interface DecisionParams {
-	generation_id: string
+	/** Present for AI suggestions. Absent for deterministic tool output. */
+	generation_id?: string
 	user_id: string
 	decision: "accepted" | "modified" | "rejected"
 	files_affected?: string[]
 	diff_summary?: string
 	rationale?: string
 	compliance_notes?: string
+	/** Defaults to "ai_suggestion" so existing callers are unaffected. */
+	subject_type?: DecisionSubjectType
+	/** Identifies the subject when there is no generation — e.g. the standard id. */
+	subject_id?: string
+	/** Active certification profile, supplied by CertificationManager. */
+	profile_id?: number
+}
+
+/**
+ * Identifies the analysis that produced a compliance result, as reported by the backend.
+ *
+ * Without this a finding cannot be reproduced or explained later: two runs that disagree
+ * are only accountable if each says which engine and rule set it came from.
+ */
+export interface ComplianceProvenance {
+	engineVersion: string
+	engineFingerprint: string
+	standard: string
+	standardVersion: string
+	catalogHash: string
+}
+
+/** One analyzed file, identified by content hash. The source itself is never recorded. */
+export interface ComplianceFileRecord {
+	path: string
+	content_sha256: string
+}
+
+export interface ComplianceCheckParams {
+	provenance: ComplianceProvenance
+	standard_name: string
+	files: ComplianceFileRecord[]
+	/**
+	 * How the run was started — the model's tool call, the panel, a save, the palette, or the
+	 * post-write gate.
+	 *
+	 * `gate` is distinct from `tool` on purpose. A `tool` run is the model deciding to check its
+	 * work; a `gate` run happened whether it decided to or not. For evidence that difference is the
+	 * whole point — one shows the assistant's judgement, the other shows the code was checked.
+	 */
+	trigger: "tool" | "panel" | "diagnostics" | "command" | "gate"
+	task_id?: string
+	user_id?: string
+	violated_rule_ids: string[]
+	total_findings: number
+	mandatory_violations: number
+	mandatory_clean: boolean
+	score: number | null
+	rules_automated: number
+	/**
+	 * A subset of `rules_automated`: rules whose check declares an analysis limit it does not
+	 * reach. Null when the backend predates the field — which is not the same as zero, and the
+	 * audit record must not claim it is.
+	 */
+	rules_partially_automated: number | null
+	rules_manual_review: number
+	/** True when the backend capped the finding list; the counts above remain truthful. */
+	truncated: boolean
+}
+
+export interface ComplianceAutofixParams {
+	provenance: ComplianceProvenance
+	standard_name: string
+	tier: "safe" | "review"
+	trigger: "tool" | "panel" | "diagnostics" | "command" | "gate"
+	task_id?: string
+	user_id?: string
+	/** Before/after hashes per file, so an applied fix is attributable to exact content. */
+	files: Array<ComplianceFileRecord & { fixed_sha256: string; changed: boolean }>
+	applied_rule_ids: string[]
+	fixes_applied: number
+	fixes_skipped: number
 }
 
 // Integrity verification result
@@ -218,16 +301,32 @@ export interface IntegrityResult {
 	expected_hash?: string
 }
 
-// Coverage enforcement result
+/**
+ * Where a project stands against its assurance level.
+ *
+ * Traceability coverage and structural coverage are separate objectives under DO-178C and
+ * one cannot stand in for the other. This interface deliberately has no general `passed`:
+ * it previously did, computed from traceability alone while reporting the level's
+ * structural metric alongside it, which amounted to telling a DAL A user their MC/DC
+ * objective was satisfied by requirement links. Structural coverage is reported as
+ * unavailable until something measures it.
+ */
 export interface CoverageEnforcement {
 	requirements_met: number
 	requirements_total: number
-	passed: boolean
 	level_id: string | null
-	required_coverage: number
-	actual_coverage: number
-	coverage_metric: string
 	message: string
+
+	traceability_passed: boolean
+	required_traceability_coverage: number
+	traceability_coverage: number
+
+	/** What the level demands: MC/DC at DAL A, decision at DAL B, statement at DAL C. */
+	required_structural_metric: string
+	/** False until a coverage run has been ingested. */
+	structural_coverage_available: boolean
+	/** Meaningless while `structural_coverage_available` is false. */
+	structural_coverage: number | null
 }
 
 // Certification manager status
@@ -237,7 +336,8 @@ export interface CertificationStatus {
 	profile_level: string | null
 	traced_count: number
 	untraced_count: number
-	coverage_percent: number
+	/** Requirements with at least one link, over all requirements. Not structural coverage. */
+	traceability_coverage_percent: number
 	last_audit_entry: string | null
 	integrity_status: "valid" | "invalid" | "unchecked"
 	enforcement: CoverageEnforcement | null

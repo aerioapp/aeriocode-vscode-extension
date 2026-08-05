@@ -23,7 +23,7 @@ describe("CertificationManager", () => {
 				expect(status.profile).to.be.null
 				expect(status.traced_count).to.equal(0)
 				expect(status.untraced_count).to.equal(0)
-				expect(status.coverage_percent).to.equal(0)
+				expect(status.traceability_coverage_percent).to.equal(0)
 				expect(status.integrity_status).to.equal("unchecked")
 			} catch {
 				// Manager may fail to initialize without proper context — that's fine

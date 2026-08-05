@@ -42,6 +42,7 @@ import {
 } from "@/utils/slash-commands"
 import { validateApiConfiguration, validateModelId } from "@/utils/validate"
 import AeriocodeRulesToggleModal from "../aeriocode-rules/AeriocodeRulesToggleModal"
+import ComplianceProfileToggle from "../compliance/ComplianceProfileToggle"
 import ServersToggleModal from "./ServersToggleModal"
 import { Mode } from "@shared/storage/types"
 import { isSafari } from "@/utils/platformUtils"
@@ -1094,10 +1095,10 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			switch (selectedModelId) {
 				case "AerioCode":
 					return "AerioCode"
-				case "AerioCode-DO178C":
-					return "AerioCode DO-178C"
 				case "AerioCode-mini":
 					return "AerioCode Mini"
+				case "AerioMind":
+					return "AerioMind"
 				default:
 					return selectedModelId
 			}
@@ -1715,6 +1716,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 									</ModelSelectorTooltip>
 								)}
 							</ModelContainer>
+							<ComplianceProfileToggle />
 						</ButtonGroup>
 					</div>
 					{/* Tooltip for Plan/Act toggle remains outside the conditional rendering */}

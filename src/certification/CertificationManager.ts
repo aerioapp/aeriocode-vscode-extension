@@ -6,9 +6,19 @@ import { ProjectDatabase } from "./db/ProjectDatabase"
 import { UserDatabase } from "./db/UserDatabase"
 import { ProfileLoader } from "./ProfileLoader"
 import { AuditTrailService } from "./AuditTrailService"
+import { HumanDecisionCapture } from "./HumanDecisionCapture"
 import { TraceabilityChecker } from "./TraceabilityChecker"
 import { RequirementTagParser } from "./RequirementTagParser"
-import type { CertificationProfile, CertificationStatus, GenerationStartParams, DecisionParams } from "./types"
+import { calculateEnforcement } from "./coverageEnforcement"
+import { EvidenceSync } from "@/services/evidence/EvidenceSync"
+import type {
+	CertificationProfile,
+	CertificationStatus,
+	ComplianceAutofixParams,
+	ComplianceCheckParams,
+	DecisionParams,
+	GenerationStartParams,
+} from "./types"
 import { Logger } from "@/services/logging/Logger"
 
 /**
@@ -26,6 +36,16 @@ export class CertificationManager implements vscode.Disposable {
 	private activeProfile: CertificationProfile | null = null
 	private activeProfileLevel: string | null = null
 	private auditService: AuditTrailService | null = null
+	// Built alongside auditService: a decision cannot be recorded without an audit trail
+	// to chain it into, so the two share a lifetime.
+	private decisionCapture: HumanDecisionCapture | null = null
+	/**
+	 * Pushes the local trail to the server-side evidence store.
+	 *
+	 * The local database is a write buffer; the authoritative chained and signed trail lives
+	 * server-side, where the developer whose work is audited cannot alter it.
+	 */
+	private evidenceSync: EvidenceSync | null = null
 	private traceabilityChecker: TraceabilityChecker | null = null
 	private workspacePath: string | null = null
 	private disposables: vscode.Disposable[] = []
@@ -40,6 +60,46 @@ export class CertificationManager implements vscode.Disposable {
 
 	private constructor(private context: vscode.ExtensionContext) {
 		// UserDatabase is lazily initialized on first access
+	}
+
+	/**
+	 * The active profile's standard and level, or null — without constructing anything.
+	 *
+	 * ⚠️ {@link getInstance} throws when it has never been given a context, which is the normal state
+	 * in unit tests and before `activate` has run. The compliance resolver needs this answer on the
+	 * path taken by every write, so it needs a form that reports absence instead of throwing.
+	 *
+	 * Exists so the assurance level has **one** source. A programme that has declared itself DAL A in
+	 * its certification profile has not also got to declare it in a setting; two places to say one
+	 * thing is two places to disagree.
+	 */
+	static peekActiveProfile(): { standard: string; level: string } | null {
+		const instance = CertificationManager.instance
+		if (!instance) {
+			return null
+		}
+		const standard = instance.getActiveProfile()?.standard
+		const level = instance.getActiveProfileLevel()
+		return standard && level ? { standard, level } : null
+	}
+
+	/**
+	 * Subscribe to certification events without requiring the manager to exist yet.
+	 *
+	 * Companion to {@link peekActiveProfile}: anything that *reads* the active profile defensively
+	 * also has to know when it changes, or it shows a stale answer until something unrelated happens
+	 * to refresh it. The status bar had exactly that gap — it would keep reporting the old level
+	 * after a profile was activated mid-session, which is the silent-wrong-state failure the
+	 * indicator exists to prevent.
+	 *
+	 * A no-op disposable when the manager was never initialised, so a caller needs no guard.
+	 */
+	static onActiveProfileChanged(listener: () => void): vscode.Disposable {
+		const instance = CertificationManager.instance
+		if (!instance) {
+			return { dispose: () => {} }
+		}
+		return instance.onCertificationEvent(() => listener())
 	}
 
 	static getInstance(context?: vscode.ExtensionContext): CertificationManager {
@@ -124,6 +184,8 @@ export class CertificationManager implements vscode.Disposable {
 		if (profile) {
 			this.activeProfile = profile
 			this.auditService = new AuditTrailService(this.projectDb)
+			this.decisionCapture = new HumanDecisionCapture(this.auditService, this.projectDb)
+			this.evidenceSync = new EvidenceSync(this.projectDb)
 
 			// Get active level from project profile or default to first available
 			const projectProfile = ProfileLoader.loadProjectProfile(workspacePath)
@@ -185,6 +247,8 @@ export class CertificationManager implements vscode.Disposable {
 		this.activeProfile = profile
 		this.activeProfileLevel = level
 		this.auditService = new AuditTrailService(this.projectDb)
+		this.decisionCapture = new HumanDecisionCapture(this.auditService, this.projectDb)
+		this.evidenceSync = new EvidenceSync(this.projectDb)
 		this.traceabilityChecker = new TraceabilityChecker(this.projectDb)
 
 		// Update user DB
@@ -363,6 +427,8 @@ export class CertificationManager implements vscode.Disposable {
 				},
 			})
 
+			this.scheduleEvidencePush()
+
 			this.emitCertificationEvent({
 				type: "ai_generation",
 				entityType: "ai_suggestion",
@@ -408,6 +474,8 @@ export class CertificationManager implements vscode.Disposable {
 				},
 			})
 
+			this.scheduleEvidencePush()
+
 			this.emitCertificationEvent({
 				type: "ai_generation",
 				entityType: "ai_suggestion",
@@ -421,57 +489,35 @@ export class CertificationManager implements vscode.Disposable {
 	}
 
 	/**
-	 * Called when a human makes a decision on an AI suggestion.
+	 * Called when a human decides on a proposed change.
+	 *
+	 * The write itself is HumanDecisionCapture's. This method used to hold a second copy
+	 * of that logic, which meant HumanDecisionCapture's tests covered a class nothing
+	 * instantiated while the code that actually ran was untested. Delegating leaves this
+	 * method responsible only for what it uniquely knows: the active profile, the UI
+	 * event, and the project index.
+	 *
 	 * No-op when inactive.
 	 */
 	async onHumanDecision(params: DecisionParams): Promise<void> {
-		if (!this.isActive || !this.projectDb || !this.auditService) return
+		if (!this.isActive || !this.projectDb || !this.decisionCapture) return
 
 		try {
 			const now = new Date().toISOString()
-			const generation = this.projectDb.getGeneration(params.generation_id)
+			const subjectType = params.subject_type ?? "ai_suggestion"
 
-			const decisionId = `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-
-			this.projectDb.insertDecision({
-				decision_id: decisionId,
-				generation_id: params.generation_id,
-				user_id: params.user_id,
-				decision: params.decision,
-				files_affected: params.files_affected,
-				diff_summary: params.diff_summary,
-				rationale: params.rationale,
-				compliance_notes: params.compliance_notes,
-				presented_at: generation?.completed_at || undefined,
-				decided_at: now,
-				decision_duration_ms: generation?.completed_at
-					? new Date(now).getTime() - new Date(generation.completed_at).getTime()
-					: undefined,
-			})
-
-			await this.auditService.recordEvent({
-				event_type: "human_decision",
-				event_action: params.decision,
-				user_id: params.user_id,
-				entity_type: "ai_suggestion",
-				entity_id: params.generation_id,
-				model_id: generation?.model_id || undefined,
+			await this.decisionCapture.captureDecision({
+				...params,
 				profile_id: this.getActiveProfileId(),
-				payload: {
-					decision_id: decisionId,
-					generation_id: params.generation_id,
-					decision: params.decision,
-					files_affected: params.files_affected || [],
-					rationale: params.rationale || null,
-					modifications_summary: params.diff_summary || null,
-				},
 			})
+
+			this.scheduleEvidencePush()
 
 			this.emitCertificationEvent({
 				type: "human_decision",
-				entityType: "ai_suggestion",
-				entityId: params.generation_id,
-				payload: JSON.stringify({ decision: params.decision, decision_id: decisionId }),
+				entityType: subjectType,
+				entityId: params.generation_id ?? params.subject_id ?? "",
+				payload: JSON.stringify({ decision: params.decision, subject_type: subjectType }),
 				timestamp: now,
 			})
 
@@ -489,6 +535,218 @@ export class CertificationManager implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Called when a user applies compliance fixes to their files.
+	 *
+	 * Recorded as a human decision, not just as a tool event, because that is precisely
+	 * what it is: an engineer chose to accept a set of machine-generated edits into the
+	 * source. Under a DO-330 Criteria 3 position — the tool supplements review and
+	 * replaces no process — this record is the evidence that a human stood behind the
+	 * change.
+	 *
+	 * The note states what was actually approved. The panel presents a fix count and a
+	 * tier, not a per-hunk diff, so the record says the user approved that set. Wording it
+	 * as though each edit were individually reviewed would overstate the evidence.
+	 *
+	 * No-op when inactive.
+	 */
+	async onComplianceFixesAccepted(params: {
+		standard: string
+		standard_name: string
+		tier: "safe" | "review"
+		user_id: string
+		files_affected: string[]
+		fixes_applied: number
+		applied_rule_ids: string[]
+	}): Promise<void> {
+		if (!this.isActive) return
+
+		await this.onHumanDecision({
+			user_id: params.user_id,
+			decision: "accepted",
+			subject_type: "compliance_autofix",
+			subject_id: params.standard,
+			files_affected: params.files_affected,
+			compliance_notes:
+				`Applied ${params.fixes_applied} ${params.tier}-tier ${params.standard_name} fix(es) across ` +
+				`${params.files_affected.length} file(s) for rule(s) ${params.applied_rule_ids.join(", ") || "none"}. ` +
+				`Approved as a set from the compliance panel.`,
+		})
+	}
+
+	/**
+	 * Called after a compliance analysis completes.
+	 *
+	 * A compliance run is a verification activity, and its result is the evidence an
+	 * auditor asks for. Before this existed the engine produced findings, rendered a
+	 * panel, and left no record — so a project could demonstrate nothing about what had
+	 * been checked, against which rule set, or when.
+	 *
+	 * Only counts, rule ids and content hashes are recorded. Source never enters the
+	 * audit trail; the hash is what ties the result to the exact bytes analyzed, and it
+	 * does so without the trail becoming a second copy of the codebase.
+	 *
+	 * No-op when inactive.
+	 */
+	async onComplianceCheck(params: ComplianceCheckParams): Promise<void> {
+		if (!this.isActive || !this.projectDb || !this.auditService) return
+
+		try {
+			const now = new Date().toISOString()
+
+			await this.auditService.recordEvent({
+				event_type: "compliance_check",
+				// The action is the outcome, so a reader scanning event actions sees which
+				// runs were clean without opening every payload.
+				event_action: params.mandatory_clean ? "clean" : "violations_found",
+				user_id: params.user_id,
+				task_id: params.task_id,
+				entity_type: "compliance_run",
+				entity_id: params.provenance.standard,
+				profile_id: this.getActiveProfileId(),
+				payload: {
+					standard: params.provenance.standard,
+					standard_name: params.standard_name,
+					standard_version: params.provenance.standardVersion,
+					catalog_hash: params.provenance.catalogHash,
+					engine_version: params.provenance.engineVersion,
+					engine_fingerprint: params.provenance.engineFingerprint,
+					trigger: params.trigger,
+					files: params.files,
+					violated_rule_ids: params.violated_rule_ids,
+					total_findings: params.total_findings,
+					mandatory_violations: params.mandatory_violations,
+					mandatory_clean: params.mandatory_clean,
+					score: params.score,
+					// Recorded so a report can state what the run did NOT cover. A score
+					// without its denominator invites reading "no findings" as "compliant".
+					rules_automated: params.rules_automated,
+					rules_partially_automated: params.rules_partially_automated,
+					rules_manual_review: params.rules_manual_review,
+					findings_truncated: params.truncated,
+					extension_version: this.context.extension?.packageJSON?.version || "unknown",
+				},
+			})
+
+			this.scheduleEvidencePush()
+
+			this.emitCertificationEvent({
+				type: "compliance_check",
+				entityType: "compliance_run",
+				entityId: params.provenance.standard,
+				payload: JSON.stringify({
+					standard: params.provenance.standard,
+					mandatory_violations: params.mandatory_violations,
+					score: params.score,
+				}),
+				timestamp: now,
+			})
+		} catch (err) {
+			Logger.log("Certification: onComplianceCheck failed: " + err)
+		}
+	}
+
+	/**
+	 * Called after compliance fixes are applied to source.
+	 *
+	 * Recorded separately from the analysis because this one changed code. Both hashes are
+	 * kept: the before hash ties the change to the content that was analyzed, the after
+	 * hash to what the file became, so a later reviewer can confirm the file in the
+	 * repository is the one the tool produced and not something edited afterwards.
+	 *
+	 * No-op when inactive.
+	 */
+	async onComplianceAutofix(params: ComplianceAutofixParams): Promise<void> {
+		if (!this.isActive || !this.projectDb || !this.auditService) return
+
+		try {
+			const now = new Date().toISOString()
+
+			await this.auditService.recordEvent({
+				event_type: "compliance_autofix",
+				event_action: params.tier,
+				user_id: params.user_id,
+				task_id: params.task_id,
+				entity_type: "compliance_run",
+				entity_id: params.provenance.standard,
+				profile_id: this.getActiveProfileId(),
+				payload: {
+					standard: params.provenance.standard,
+					standard_name: params.standard_name,
+					standard_version: params.provenance.standardVersion,
+					catalog_hash: params.provenance.catalogHash,
+					engine_version: params.provenance.engineVersion,
+					engine_fingerprint: params.provenance.engineFingerprint,
+					tier: params.tier,
+					trigger: params.trigger,
+					files: params.files,
+					applied_rule_ids: params.applied_rule_ids,
+					fixes_applied: params.fixes_applied,
+					fixes_skipped: params.fixes_skipped,
+					extension_version: this.context.extension?.packageJSON?.version || "unknown",
+				},
+			})
+
+			this.scheduleEvidencePush()
+
+			this.emitCertificationEvent({
+				type: "compliance_autofix",
+				entityType: "compliance_run",
+				entityId: params.provenance.standard,
+				payload: JSON.stringify({
+					standard: params.provenance.standard,
+					tier: params.tier,
+					fixes_applied: params.fixes_applied,
+				}),
+				timestamp: now,
+			})
+		} catch (err) {
+			Logger.log("Certification: onComplianceAutofix failed: " + err)
+		}
+	}
+
+	/**
+	 * Nudge the evidence sync after writing to the trail.
+	 *
+	 * Deliberately not awaited by callers. Every one of them sits in an ordinary editing flow —
+	 * a file saved, a tool call finished, a fix accepted — and none should wait on a network
+	 * round trip or be able to fail because of one. The sync collapses concurrent calls
+	 * internally, so a burst of events produces a single drain rather than overlapping pushes.
+	 */
+	private scheduleEvidencePush(): void {
+		if (!this.evidenceSync) {
+			return
+		}
+		void this.evidenceSync.flush().catch((err) => {
+			Logger.log("Certification: evidence push failed: " + err)
+		})
+	}
+
+	/**
+	 * Ask the server to verify the trail it holds, pushing any backlog first.
+	 *
+	 * Verification is server-side because the client has no business attesting to a chain it
+	 * did not build and cannot sign. Returns null when certification is inactive or the
+	 * service is unreachable.
+	 */
+	async verifyEvidenceChain() {
+		if (!this.isActive || !this.evidenceSync) {
+			return null
+		}
+		return this.evidenceSync.verify()
+	}
+
+	/**
+	 * Sync backlog and last error, for the UI.
+	 *
+	 * Surfaced rather than hidden: a user whose entries are all still queued locally has
+	 * materially weaker evidence than one whose trail is stored server-side, and the interface
+	 * must not imply otherwise.
+	 */
+	evidenceSyncStatus() {
+		return this.evidenceSync ? this.evidenceSync.status() : null
+	}
+
 	// --- Status & Queries ---
 
 	getStatus(): CertificationStatus {
@@ -499,7 +757,7 @@ export class CertificationManager implements vscode.Disposable {
 				profile_level: null,
 				traced_count: 0,
 				untraced_count: 0,
-				coverage_percent: 0,
+				traceability_coverage_percent: 0,
 				last_audit_entry: null,
 				integrity_status: "unchecked",
 				enforcement: null,
@@ -510,7 +768,9 @@ export class CertificationManager implements vscode.Disposable {
 		const lastEntry = this.projectDb.getLastAuditEntry()
 		const totalReqs = this.projectDb.getAllRequirements().length
 
-		const coveragePercent = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+		// Traceability coverage: requirements carrying at least one link. This says nothing
+		// about how much code the tests exercised — see the enforcement block below.
+		const traceabilityCoverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
 
 		// Check last integrity verification result
 		let integrityStatus: "valid" | "invalid" | "unchecked" = "unchecked"
@@ -526,29 +786,12 @@ export class CertificationManager implements vscode.Disposable {
 			// integrity_check table may not exist yet
 		}
 
-		// Level-aware coverage enforcement
-		let enforcement: CertificationStatus["enforcement"] = null
-		if (this.activeProfile && this.activeProfileLevel) {
-			const levelConfig = this.activeProfile.levels[this.activeProfileLevel]
-			if (levelConfig) {
-				// Use the profile's primary coverage metric to determine required coverage.
-				// statement_coverage is the baseline fallback for any standard.
-				const requiredCoverage = levelConfig.statement_coverage
-				const passed = coveragePercent >= requiredCoverage
-				enforcement = {
-					requirements_met: linkCounts.traced,
-					requirements_total: totalReqs,
-					passed,
-					level_id: this.activeProfileLevel,
-					required_coverage: requiredCoverage,
-					actual_coverage: coveragePercent,
-					coverage_metric: levelConfig.coverage_metric || "requirements-based",
-					message: passed
-						? `Coverage meets ${levelConfig.label} requirements (${coveragePercent}% >= ${requiredCoverage}%)`
-						: `Coverage below ${levelConfig.label} requirements (${coveragePercent}% < ${requiredCoverage}%)`,
-				}
-			}
-		}
+		// Level-aware enforcement. The logic lives in coverageEnforcement.ts so the tests
+		// exercise the same code this does rather than a copy of it.
+		const enforcement: CertificationStatus["enforcement"] =
+			this.activeProfile && this.activeProfileLevel
+				? calculateEnforcement(this.activeProfile, this.activeProfileLevel, totalReqs, linkCounts.traced)
+				: null
 
 		return {
 			active: true,
@@ -556,7 +799,7 @@ export class CertificationManager implements vscode.Disposable {
 			profile_level: this.activeProfileLevel,
 			traced_count: linkCounts.traced,
 			untraced_count: Math.max(0, totalReqs - linkCounts.traced),
-			coverage_percent: coveragePercent,
+			traceability_coverage_percent: traceabilityCoverage,
 			last_audit_entry: lastEntry?.timestamp || null,
 			integrity_status: integrityStatus,
 			enforcement,
@@ -736,6 +979,8 @@ export class CertificationManager implements vscode.Disposable {
 		this.activeProfile = null
 		this.activeProfileLevel = null
 		this.auditService = null
+		this.decisionCapture = null
+		this.evidenceSync = null
 	}
 
 	dispose(): void {

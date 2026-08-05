@@ -215,14 +215,43 @@ interface Migration {
 	sql: string
 }
 
+/**
+ * Sync state for pushing the local trail to the server-side evidence store.
+ *
+ * A cursor in its own table rather than a `synced_at` column on `audit_trail`, because
+ * `audit_trail` carries UPDATE and DELETE triggers that reject any modification — marking a
+ * row as synced in place is impossible by design, and weakening those triggers to allow it
+ * would trade the append-only guarantee for a bookkeeping convenience.
+ *
+ * `project_key` is minted here once and never changes. It cannot be derived from the
+ * workspace path: a project that gets checked out somewhere else, or renamed, must keep its
+ * evidence rather than silently starting a second trail.
+ *
+ * The row is a singleton, held to one by the CHECK on id.
+ */
+const PROJECT_SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS evidence_sync (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  project_key TEXT NOT NULL,
+  last_synced_audit_id INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TEXT,
+  last_success_at TEXT,
+  last_error TEXT,
+  entries_pushed INTEGER NOT NULL DEFAULT 0
+);
+`
+
 const PROJECT_MIGRATIONS: Migration[] = [
 	{
 		version: 1,
 		description: "Initial schema with requirements, traceability, audit trail, generations, and decisions",
 		sql: PROJECT_SCHEMA_V1,
 	},
-	// Future migrations go here:
-	// { version: 2, description: 'Add X column', sql: 'ALTER TABLE ...' },
+	{
+		version: 2,
+		description: "Add evidence_sync cursor for server-side evidence push",
+		sql: PROJECT_SCHEMA_V2,
+	},
 ]
 
 const USER_MIGRATIONS: Migration[] = [

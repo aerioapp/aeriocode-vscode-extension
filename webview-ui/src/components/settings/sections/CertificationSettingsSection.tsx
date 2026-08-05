@@ -54,9 +54,19 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 			<Section>
 				<div style={{ marginBottom: 16 }}>
 					<h4 className="text-[var(--vscode-foreground)] m-0 mb-2">Certification Mode</h4>
+					{/* ⚠️ "and other safety standards" implied a breadth this section does not have. The
+					    profiles here are DO-178C only — `ProfileSelector` says as much in a comment naming
+					    ISO 26262 as future work — while the coding-standard picker in the chat input offers
+					    ISO 26262 as a regime. A user who sees both reasonably reads the narrower screen as
+					    broken. The two are different features and the difference is worth stating. */}
 					<p className="text-[12px] text-[var(--vscode-descriptionForeground)] m-0 mb-4">
-						Enable certification features for DO-178C and other safety standards compliance. All data stays local on
-						your system.
+						Objective tables, document drafts and traceability artifacts, for DO-178C. All data stays local on your
+						system.
+					</p>
+					<p className="text-[12px] text-[var(--vscode-descriptionForeground)] m-0 mb-4">
+						This is separate from the coding standard, which is set per workspace from the shield beside the model
+						name and can be held to DO-178C or ISO 26262. Certification artifacts are DO-178C only — Aerio asserts no
+						mapping from its rules to ASILs.
 					</p>
 
 					{certificationActive ? (

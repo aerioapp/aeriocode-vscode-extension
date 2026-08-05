@@ -16,6 +16,20 @@ export interface ApiHandlerOptions {
 		browserHeight?: number
 		mcpServers?: any[]
 		browserSettings?: any
+		/**
+		 * The coding standard in force for this workspace, or absent when none is.
+		 *
+		 * Travels on the request rather than being encoded in the model id, which is what lets a
+		 * certified repository and an internal tool differ without the developer switching models
+		 * between them. The backend generates the system prompt from it and rejects an unknown
+		 * standard rather than falling back silently.
+		 */
+		complianceProfile?: {
+			standard: string
+			level?: string | null
+			regime?: string
+			language?: string
+		}
 	}
 	// Plan mode configurations
 	planModeApiModelId?: string

@@ -9,7 +9,7 @@ const INACTIVE_RESPONSE = CertificationStatusResponse.create({
 	profileLevel: "",
 	tracedCount: 0,
 	untracedCount: 0,
-	coveragePercent: 0,
+	traceabilityCoveragePercent: 0,
 	lastAuditEntry: "",
 	integrityStatus: "unchecked",
 	enforcement: undefined,
@@ -28,12 +28,17 @@ export async function getCertificationStatus(
 			enforcement = CoverageEnforcement.create({
 				requirementsMet: status.enforcement.requirements_met,
 				requirementsTotal: status.enforcement.requirements_total,
-				passed: status.enforcement.passed,
 				levelId: status.enforcement.level_id || "",
-				requiredCoverage: status.enforcement.required_coverage,
-				actualCoverage: status.enforcement.actual_coverage,
-				coverageMetric: status.enforcement.coverage_metric,
 				message: status.enforcement.message,
+
+				traceabilityPassed: status.enforcement.traceability_passed,
+				requiredTraceabilityCoverage: status.enforcement.required_traceability_coverage,
+				traceabilityCoverage: status.enforcement.traceability_coverage,
+
+				requiredStructuralMetric: status.enforcement.required_structural_metric,
+				structuralCoverageAvailable: status.enforcement.structural_coverage_available,
+				// proto3 has no null; the value is only meaningful when the flag above is set.
+				structuralCoverage: status.enforcement.structural_coverage ?? 0,
 			})
 		}
 
@@ -43,7 +48,7 @@ export async function getCertificationStatus(
 			profileLevel: status.profile_level || "",
 			tracedCount: status.traced_count,
 			untracedCount: status.untraced_count,
-			coveragePercent: status.coverage_percent,
+			traceabilityCoveragePercent: status.traceability_coverage_percent,
 			lastAuditEntry: status.last_audit_entry || "",
 			integrityStatus: status.integrity_status,
 			enforcement,

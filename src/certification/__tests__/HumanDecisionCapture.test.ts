@@ -147,4 +147,61 @@ describe("HumanDecisionCapture", () => {
 			expect(row.rationale).to.equal("Added null checks")
 		})
 	})
+
+	/**
+	 * A compliance autofix is deterministic tool output, not something a model produced.
+	 * It still needs a decision record — an engineer accepted machine-written edits into
+	 * certified source — but it must not be filed as an AI generation, because the
+	 * AI-provenance data is what a certification authority examines most closely.
+	 */
+	describe("decisions on changes that did not come from a generation", () => {
+		it("records a decision with no generation and does not invent one", async () => {
+			await decisionCapture.captureDecision({
+				user_id: "user-1",
+				decision: "accepted",
+				subject_type: "compliance_autofix",
+				subject_id: "jf-avpp",
+				files_affected: ["src/flight_control.cpp"],
+				compliance_notes: "Applied 4 safe-tier JF-AV++ fix(es)",
+			})
+
+			const row = db.prepare("SELECT * FROM human_decisions ORDER BY id DESC LIMIT 1").get() as any
+			expect(row.decision).to.equal("accepted")
+			expect(row.generation_id).to.be.null
+			expect(row.compliance_notes).to.include("safe-tier")
+
+			// The three seeded generations are still the only ones present.
+			const generations = db.prepare("SELECT COUNT(*) AS count FROM ai_generations").get() as any
+			expect(generations.count).to.equal(3)
+		})
+
+		it("files the audit entry against the autofix, not against an AI suggestion", async () => {
+			await decisionCapture.captureDecision({
+				user_id: "user-1",
+				decision: "accepted",
+				subject_type: "compliance_autofix",
+				subject_id: "jf-avpp",
+			})
+
+			const entry = db.prepare("SELECT * FROM audit_trail ORDER BY id DESC LIMIT 1").get() as any
+			expect(entry.entity_type).to.equal("compliance_autofix")
+			expect(entry.entity_id).to.equal("jf-avpp")
+			// No model produced this change, so no model may be attributed to it.
+			expect(entry.model_id).to.be.null
+			expect(JSON.parse(entry.payload).generation_id).to.be.null
+		})
+
+		it("still attributes a generation-backed decision to its model", async () => {
+			await decisionCapture.captureDecision({
+				generation_id: "gen-002",
+				user_id: "user-1",
+				decision: "accepted",
+			})
+
+			const entry = db.prepare("SELECT * FROM audit_trail ORDER BY id DESC LIMIT 1").get() as any
+			expect(entry.entity_type).to.equal("ai_suggestion")
+			expect(entry.entity_id).to.equal("gen-002")
+			expect(entry.model_id).to.equal("test-model")
+		})
+	})
 })

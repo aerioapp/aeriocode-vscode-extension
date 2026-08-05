@@ -56,7 +56,14 @@ const DEFAULT_DO178C_PROFILE: CertificationProfile = {
 	requirement_id_patterns: ["REQ-{type}-{number}", "HLR-{number}", "LLR-{number}", "SYS-{number}"],
 	requirement_levels: ["system", "high_level", "low_level", "derived"],
 	traceability_directions: ["bidirectional"],
-	safety_coding_rules: "power-of-10",
+	// The Aerio Safety Coding Standard: 148 rules, 134 checked automatically, and adoptable as a
+	// programme's Software Code Standards under DO-178C §11.8 without licensing anything. The
+	// previous default named Power of 10, which is ten rules — a sound set and far short of what
+	// §11.8(a)-(e) asks a code standard to define.
+	safety_coding_rules: "aerio-scs",
+	// Standards a programme may additionally hold itself to. Aerio checks these, but their guideline
+	// numbering is its own recollection rather than a confirmed citation, so a programme wanting its
+	// own identifiers on findings supplies a mapping from its licensed copy.
 	coding_standards: ["MISRA-C-2012", "MISRA-CPP-2023"],
 }
 

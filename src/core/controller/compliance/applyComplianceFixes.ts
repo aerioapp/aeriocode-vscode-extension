@@ -8,6 +8,8 @@ import {
 } from "@shared/proto/aeriocode/compliance"
 import { ComplianceApiError, ComplianceClient, type ComplianceFile } from "@/services/compliance/ComplianceClient"
 import { AeriocodeIgnoreController } from "@/core/ignore/AeriocodeIgnoreController"
+import { CertificationManager } from "@/certification"
+import { AuthService } from "@/services/auth/AuthService"
 import { extractTextFromFile } from "@integrations/misc/extract-text"
 import { getWorkspacePath } from "@/utils/path"
 import { telemetryService } from "@/services/telemetry"
@@ -67,6 +69,7 @@ export async function applyComplianceFixes(
 			files,
 			tier,
 			request.ruleIds.length > 0 ? request.ruleIds : undefined,
+			{ trigger: "panel" },
 		)
 
 		const edit = new vscode.WorkspaceEdit()
@@ -113,6 +116,24 @@ export async function applyComplianceFixes(
 		}
 
 		telemetryService.captureButtonClick("compliance_panel_autofix")
+
+		// The user clicked a button that said it would edit their files, and it did. Under a
+		// DO-330 Criteria 3 position the tool replaces no review process, so the record that
+		// an engineer accepted these edits is the evidence backing that claim.
+		const changed = written.filter((entry) => entry.changed)
+		if (changed.length > 0) {
+			await CertificationManager.getInstance().onComplianceFixesAccepted({
+				standard: result.standard,
+				standard_name: result.standardName,
+				tier,
+				user_id: AuthService.getInstance().getInfo().user?.uid || "unknown",
+				files_affected: changed.map((entry) => entry.path),
+				fixes_applied: result.summary.fixesApplied,
+				applied_rule_ids: [...new Set(changed.flatMap((entry) => entry.appliedRuleIds))].sort((a, b) =>
+					a.localeCompare(b, undefined, { numeric: true }),
+				),
+			})
+		}
 
 		return ApplyComplianceFixesResponse.create({
 			filesChanged: result.summary.filesChanged,

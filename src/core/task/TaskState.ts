@@ -8,6 +8,21 @@ export class TaskState {
 	isStreaming = false
 	isWaitingForFirstChunk = false
 	didCompleteReadingStream = false
+	/**
+	 * The last stream ended because the model hit its output token limit.
+	 *
+	 * Kept because end-of-stream marks every partial content block complete, which for a truncated
+	 * `write_to_file` means executing it and saving a source file that stops mid-function. Reset per
+	 * request alongside the other streaming flags.
+	 */
+	didTruncateResponse = false
+	/**
+	 * A tool call was discarded because its closing tag never arrived.
+	 *
+	 * Distinct from {@link didTruncateResponse}: a provider can report a clean stop and still leave
+	 * the call unterminated, so the missing tag is the evidence and the reported reason is not.
+	 */
+	didDropIncompleteToolUse = false
 
 	// Content processing
 	currentStreamingContentIndex = 0

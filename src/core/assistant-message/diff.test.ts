@@ -166,14 +166,23 @@ replaced`,
 			shouldThrow: true,
 		},
 		{
-			name: "malformed diff - trailing space on separator",
+			// ⚠️ This asserted `shouldThrow: true` and now applies. The change is deliberate: marker
+			// lines are trimmed before matching, because an *indented* marker previously matched
+			// nothing — and the failure mode was the worst available, the diff parsing as containing no
+			// blocks at all so the file came back unchanged with no error raised.
+			//
+			// A trailing space falls out of the same trim. Rejecting a separator over an invisible
+			// character fails the whole edit for nothing, and the harness's own matcher has always
+			// allowed it (`^[=]{3,}\s*$`). The marker patterns are deliberately flexible elsewhere too —
+			// `[-]{3,}`, the legacy `<<<` spelling — so this follows the design rather than bending it.
+			name: "separator with a trailing space, which is tolerated",
 			original: "line1\nline2\nline3",
 			diff: `------- SEARCH
 line2
 ======= 
 replaced
 +++++++ REPLACE`,
-			shouldThrow: true,
+			expected: "line1\nreplaced\nline3",
 		},
 		{
 			name: "malformed diff - double replace markers",

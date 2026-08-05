@@ -2,7 +2,11 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import * as diff from "diff"
 import * as path from "path"
 import { AeriocodeIgnoreController, LOCK_TEXT_SYMBOL } from "../ignore/AeriocodeIgnoreController"
+import { toolParamNames, toolUseNames } from "../assistant-message"
 import { Mode } from "@/shared/storage/types"
+
+/** Sentinel tag for a call made in JSON function-call dialect, which has no XML tag to name. */
+export const JSON_TOOL_CALL = "JSON tool call"
 
 export const formatResponse = {
 	duplicateFileReadNotice: () =>
@@ -20,6 +24,18 @@ export const formatResponse = {
 
 	aeriocodeIgnoreError: (path: string) =>
 		`Access to ${path} is blocked by the .aeriocodeignore file settings. You must try to continue in the task without using this file, or ask the user to update the .aeriocodeignore file.`,
+
+	incompleteToolUse: () =>
+		`[ERROR] Your previous response ended in the middle of a tool call — its closing tag never arrived — so the call was incomplete and has been discarded. Nothing was written.
+
+Retry the tool call, and make sure it is closed: every parameter tag and the tool tag itself.
+(This is an automated message, so do not respond to it conversationally.)`,
+
+	responseTruncated: () =>
+		`[ERROR] Your previous response was cut off because it reached the output length limit, so any tool call it contained was incomplete and has been discarded. Nothing was written.
+
+Retry, and make the response fit: write one file per turn, and spend the budget on the file rather than on restating the rules or the plan before it. If the file is genuinely too large for one turn, create it with its structure first and fill in sections with follow-up edits.
+(This is an automated message, so do not respond to it conversationally.)`,
 
 	noToolsUsed: () =>
 		`[ERROR] You did not use a tool in your previous response! Please retry with a tool use.
@@ -40,20 +56,46 @@ Otherwise, if you have not completed the task and do not need additional informa
 		`Auto-approval limit reached. The user has provided the following feedback to help guide you:\n<feedback>\n${feedback}\n</feedback>`,
 
 	missingToolParameterError: (paramName: string, toolName?: string) => {
-		let toolSpecificHint = ""
-		if (toolName) {
-			// Provide tool-specific format examples to help the model self-correct
-			const toolExamples: Record<string, string> = {
-				read_file: `\n\nCorrect format for read_file:\n<read_file>\n<path>the/file/path.py</path>\n</read_file>`,
-				write_to_file: `\n\nCorrect format for write_to_file:\n<write_to_file>\n<path>the/file/path.py</path>\n<content>\nfile content here\n</content>\n</write_to_file>`,
-				replace_in_file: `\n\nCorrect format for replace_in_file:\n<replace_in_file>\n<path>the/file/path.py</path>\n<diff>\n------- SEARCH\n[exact text to find]\n=======\n[new text]\n+++++++ REPLACE\n</diff>\n</replace_in_file>`,
-				list_files: `\n\nCorrect format for list_files:\n<list_files>\n<path>directory/path</path>\n</list_files>`,
-				search_files: `\n\nCorrect format for search_files:\n<search_files>\n<path>directory/path</path>\n<regex>pattern</regex>\n</search_files>`,
-				execute_command: `\n\nCorrect format for execute_command:\n<execute_command>\n<command>ls -la</command>\n<requires_approval>false</requires_approval>\n</execute_command>`,
-			}
-			toolSpecificHint = toolExamples[toolName] || ""
-		}
+		// Tool-specific format examples help the model self-correct.
+		const toolSpecificHint = toolName ? correctCallExample(toolName) : ""
 		return `Missing value for required parameter '${paramName}'. Please retry with complete response.${toolSpecificHint}\n\n${toolUseInstructionsReminder}`
+	},
+
+	/**
+	 * A tool call whose opening tag names something that is not a tool.
+	 *
+	 * ⚠️ Replaces {@link noToolsUsed} for this case, because that message is false here and being
+	 * false is what makes it expensive. In a real session the model answered "write me a c++ pid
+	 * controller loop" with `<writing_to_file><path>…</path><content>…</content>` — a complete,
+	 * correct file under a tag name it invented. Told only "you did not use a tool", it had nothing
+	 * to correct: it had used one. It then spent four turns reading a file it had not written and
+	 * re-reading one it had, before recovering by chance.
+	 *
+	 * So the message names the tag it actually sent. A model that is told "you did nothing" cannot
+	 * find a spelling mistake; a model that is told "`<writing_to_file>` is not a tool" can.
+	 */
+	malformedToolUse: (tag: string, suggestedTool?: string) => {
+		const correction = suggestedTool
+			? `Judging by its parameters you meant \`${suggestedTool}\`.${correctCallExample(suggestedTool)}`
+			: `Valid tool names are: ${toolUseNames.join(", ")}.`
+
+		// The JSON dialect needs a different opening sentence: "`<JSON tool call>` is not a tool"
+		// would be gibberish, and the correction it needs is about the *format*, not the name.
+		if (tag === JSON_TOOL_CALL) {
+			return `[ERROR] Your response used JSON function-call format. This API does not accept it, so nothing was executed and nothing was written.
+
+Tools here are called with XML-style tags: the tool name is the tag, and each parameter is its own tag inside it. ${correction}
+
+Retry using the XML form.
+(This is an automated message, so do not respond to it conversationally.)`
+		}
+
+		return `[ERROR] \`<${tag}>\` is not a tool. Nothing was executed and nothing was written.
+
+The tool name is the tag itself — there is no wrapper element around it, and the name must match exactly. ${correction}
+
+Retry with the correct tool name.
+(This is an automated message, so do not respond to it conversationally.)`
 	},
 
 	invalidMcpToolArgumentError: (serverName: string, toolName: string) =>
@@ -294,6 +336,110 @@ const formatImagesIntoBlocks = (images?: string[]): Anthropic.ImageBlockParam[] 
 				} as Anthropic.ImageBlockParam
 			})
 		: []
+}
+
+/**
+ * The correct call shape for the tools a model most often gets wrong, keyed by tool name.
+ *
+ * One copy, used both when a parameter is missing and when the tool name itself is wrong — a second
+ * table of "here is how you call it" would drift from this one the first time a tool changed.
+ */
+const TOOL_CALL_EXAMPLES: Record<string, string> = {
+	read_file: `<read_file>\n<path>the/file/path.py</path>\n</read_file>`,
+	write_to_file: `<write_to_file>\n<path>the/file/path.py</path>\n<content>\nfile content here\n</content>\n</write_to_file>`,
+	replace_in_file: `<replace_in_file>\n<path>the/file/path.py</path>\n<diff>\n------- SEARCH\n[exact text to find]\n=======\n[new text]\n+++++++ REPLACE\n</diff>\n</replace_in_file>`,
+	list_files: `<list_files>\n<path>directory/path</path>\n</list_files>`,
+	search_files: `<search_files>\n<path>directory/path</path>\n<regex>pattern</regex>\n</search_files>`,
+	execute_command: `<execute_command>\n<command>ls -la</command>\n<requires_approval>false</requires_approval>\n</execute_command>`,
+	attempt_completion: `<attempt_completion>\n<result>\nwhat was done\n</result>\n</attempt_completion>`,
+}
+
+function correctCallExample(toolName: string): string {
+	const example = TOOL_CALL_EXAMPLES[toolName]
+	return example ? `\n\nCorrect format for ${toolName}:\n${example}` : ""
+}
+
+/**
+ * Which tool a malformed call was reaching for, decided by the parameters it carried.
+ *
+ * Deliberately not string distance against the tool names. `writing_to_file` is not a near-miss of
+ * `write_to_file` by any edit metric that would not also match half the tool list, whereas the
+ * parameters a call carries say what it was trying to do with no fuzziness at all: a `path` and a
+ * `content` is a write, a `path` and a `diff` is an edit. A signature matching more than one tool
+ * yields nothing rather than a guess, and the caller then lists the valid names instead.
+ */
+const PARAMETER_SIGNATURES: Array<{ params: string[]; tool: string }> = [
+	{ params: ["path", "content"], tool: "write_to_file" },
+	{ params: ["path", "diff"], tool: "replace_in_file" },
+	{ params: ["path", "regex"], tool: "search_files" },
+	{ params: ["command"], tool: "execute_command" },
+	{ params: ["result"], tool: "attempt_completion" },
+	{ params: ["path"], tool: "read_file" },
+]
+
+/**
+ * A tag that is not a tool but is being used as one.
+ *
+ * The signal is structural rather than lexical: an unrecognised tag that directly contains known
+ * *parameter* tags is a tool call whose name is wrong, and nothing else looks like that. Prose
+ * mentioning `<writing_to_file>` carries no `<path>`; a real tool call is recognised by the parser
+ * and never reaches here.
+ *
+ * @returns the offending tag and the tool it was reaching for, or undefined if this is ordinary text.
+ */
+export function detectMalformedToolUse(message: string): { tag: string; suggestedTool?: string } | undefined {
+	const known = new Set<string>([...toolUseNames, ...toolParamNames])
+
+	// ⚠️ The JSON convention, which this API does not use. Found by the protocol harness: asked to
+	// write a file, the model answered `{"tool": "list_files", "tool_input": {"path": "."}}` — the
+	// shape every other provider's function calling takes. No XML tag exists, so the turn read as
+	// "no tool use" and the model was told it had done nothing, when it had made a well-formed call
+	// in the wrong dialect. Naming the dialect is the difference between a correctable mistake and
+	// a mystifying one.
+	const asJson = message.match(/"(?:tool|name|function|recipient_name)"\s*:\s*"([a-z_]+)"/)
+	if (asJson && /"(?:tool_input|arguments|parameters|input)"\s*:/.test(message)) {
+		return { tag: JSON_TOOL_CALL, suggestedTool: toolUseNames.includes(asJson[1] as never) ? asJson[1] : undefined }
+	}
+
+	// The other JSON shape, where the tool name is the *key* rather than a `name` field:
+	// `{"read_file": {"path": "/workspace/bench.c"}}`. Measured on the second run of the protocol
+	// harness, so both shapes occur in practice and matching only one leaves the model told it did
+	// nothing on half of them. Requires a known tool name and a parameter inside, so an ordinary
+	// JSON object in an answer is not mistaken for a call.
+	for (const tool of toolUseNames) {
+		const keyed = new RegExp(`"${tool}"\\s*:\\s*\\{`)
+		if (!keyed.test(message)) {
+			continue
+		}
+		const body = message.slice(message.search(keyed))
+		if (toolParamNames.some((param) => new RegExp(`"${param}"\\s*:`).test(body))) {
+			return { tag: JSON_TOOL_CALL, suggestedTool: tool }
+		}
+	}
+
+	for (const match of message.matchAll(/<([a-z][a-z0-9_]*)>/g)) {
+		const tag = match[1]
+		if (known.has(tag)) {
+			continue
+		}
+		// Look only as far as this tag's own close, so parameters belonging to a later, correctly
+		// named call are not attributed to it.
+		const bodyStart = (match.index ?? 0) + match[0].length
+		const bodyEnd = message.indexOf(`</${tag}>`, bodyStart)
+		const body = message.slice(bodyStart, bodyEnd === -1 ? undefined : bodyEnd)
+
+		const carried = toolParamNames.filter((param) => body.includes(`<${param}>`))
+		if (carried.length === 0) {
+			continue
+		}
+
+		const candidates = PARAMETER_SIGNATURES.filter((signature) =>
+			signature.params.every((param) => carried.includes(param as (typeof toolParamNames)[number])),
+		)
+		return { tag, suggestedTool: candidates.length > 0 ? candidates[0].tool : undefined }
+	}
+
+	return undefined
 }
 
 const toolUseInstructionsReminder = `# Reminder: Instructions for Tool Use

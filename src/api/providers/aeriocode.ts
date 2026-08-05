@@ -3,7 +3,7 @@ import { ApiHandler } from "../"
 import { AeriocodeAccountService } from "@/services/account/AeriocodeAccountService"
 import { ModelInfo, backendDefaultModelId, backendDefaultModelInfo } from "@shared/api"
 import { createOpenRouterStream } from "../transform/openrouter-stream"
-import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
+import { ApiStream, ApiStreamUsageChunk, truncationChunkFor } from "../transform/stream"
 import axios from "axios"
 import { OpenRouterErrorResponse } from "./types"
 import { withRetry } from "../retry"
@@ -29,6 +29,13 @@ interface AeriocodeHandlerOptions {
 		browserHeight?: number
 		mcpServers?: any[]
 		browserSettings?: any
+		/** See ApiHandlerOptions in @shared/api — the standard in force, if any. */
+		complianceProfile?: {
+			standard: string
+			level?: string | null
+			regime?: string
+			language?: string
+		}
 	}
 	userInstructions?: string
 }
@@ -187,8 +194,44 @@ export class AeriocodeHandler implements ApiHandler {
 
 						try {
 							const parsed = JSON.parse(data)
+
+							// An error event, not a completion chunk. The backend emits one of these when
+							// the upstream refuses mid-stream — most often an exhausted daily quota.
+							//
+							// ⚠️ It used to fall through to `parsed.choices?.[0]`, find nothing, and yield
+							// nothing at all. With no text in the whole stream the turn ended with an empty
+							// assistant message and the task loop reported "the language model did not
+							// provide any assistant messages. This may indicate an issue with the API or
+							// the model's output" — telling a user who is simply out of requests that the
+							// model is broken, with no remedy in the message and nothing in the logs
+							// pointing at the real cause.
+							//
+							// Thrown rather than yielded so it travels the path errors already travel: the
+							// retry wrapper can see it, and the UI shows it as a failure instead of a
+							// silent empty turn.
+							if (parsed.error) {
+								const message =
+									typeof parsed.error === "string" ? parsed.error : parsed.error.message || "Upstream error"
+								const failure = new Error(message) as Error & { status?: number; isUpstreamFailure?: boolean }
+								// Tagged so the catch below can tell it from a malformed chunk, which that
+								// catch is there to ignore.
+								failure.isUpstreamFailure = true
+								if (typeof parsed.error === "object" && parsed.error.status) {
+									failure.status = parsed.error.status
+								}
+								throw failure
+							}
+
 							const choice = parsed.choices?.[0]
 							const delta = choice?.delta
+
+							// "length" means the model ran out of output budget mid-answer. Announced
+							// before the content of this chunk is yielded so the task loop knows the
+							// stream is incomplete by the time it finalises the parsed blocks.
+							const truncated = truncationChunkFor(choice)
+							if (truncated) {
+								yield truncated
+							}
 
 							if (delta?.content) {
 								// Count output tokens approximately
@@ -213,6 +256,13 @@ export class AeriocodeHandler implements ApiHandler {
 								didOutputUsage = true
 							}
 						} catch (error) {
+							// ⚠️ This catch exists to tolerate a malformed chunk, and it will happily
+							// swallow a deliberate throw from the block above with it. The upstream
+							// failure raised for an error event has to get past here, or reporting it is
+							// exactly as silent as not reporting it was.
+							if (error instanceof Error && (error as Error & { isUpstreamFailure?: boolean }).isUpstreamFailure) {
+								throw error
+							}
 							// Ignore parsing errors for malformed chunks
 							console.warn("Failed to parse streaming chunk:", data)
 						}
@@ -325,8 +375,27 @@ export class AeriocodeHandler implements ApiHandler {
 			if (currentModelIndex >= 0) {
 				return { id: this.availableModelIds[currentModelIndex], info: this.availableModels[currentModelIndex] }
 			}
-			// If current model is not in the available models list, still use the current model
-			// This can happen during initialization when the model is set but available models haven't been fetched yet
+
+			// ⚠️ Retired model, and the server has already said so. `AerioCode-DO178C` and
+			// `AerioCode-JFAVpp` were dropped from AiRoute's `/v1/models` when the compliance
+			// variants stopped being models; a user who had one selected keeps it in their stored
+			// configuration, and `server.py` rejects anything outside the three real ids with a
+			// **400 on every request**. Sending it anyway made the setting permanently broken with
+			// nothing in the UI explaining why.
+			//
+			// This branch used to fall through on the grounds that the list may not be fetched yet.
+			// That reason is real and is why the guard requires a *non-empty* list: before the fetch
+			// there is nothing to contradict the stored id, so it is still used unchanged below.
+			const fallback = this.availableModelIds.includes(backendDefaultModelId)
+				? backendDefaultModelId
+				: this.availableModelIds[0]
+			console.warn(
+				`Model "${this.currentModelId}" is no longer offered by the backend; using "${fallback}". ` +
+					`Available: ${this.availableModelIds.join(", ")}.`,
+			)
+			this.currentModelId = fallback
+			const fallbackIndex = this.availableModelIds.indexOf(fallback)
+			return { id: fallback, info: this.availableModels[fallbackIndex] }
 		}
 
 		// If we haven't fetched models yet or the current model is not in the list,

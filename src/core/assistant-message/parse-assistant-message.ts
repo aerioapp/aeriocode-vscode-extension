@@ -3,6 +3,62 @@ import { AssistantMessageContent, TextContent, ToolUse, ToolParamName, toolParam
 // parseAssistantmessageV1 removed in https://github.com/aerioapp/aeriocode-vscode-extension/pull/5425
 
 /**
+ * A closing tag that names the wrong tool, where it can only have meant to close the open one.
+ *
+ * ⚠️ Observed in a real session (`write me a c++ pid controller loop`): the model opened
+ * `<write_to_file>`, wrote the path and the full content, closed `</content>` — and then closed the
+ * call with **`</read_file>`**, the tool it had used one turn earlier. Nothing matched
+ * `</write_to_file>`, so the block stayed partial and was discarded at end of stream, and the model
+ * was told its response "ended in the middle of a tool call". From where it sat that was false — it
+ * had closed the call — so it resent the identical response, twice, and only recovered by chance on
+ * the third attempt. Three round trips and a complete file thrown away each time.
+ *
+ * Recovering it is unambiguous. This is only reached once the parameter has closed, so the tag is
+ * not inside a value; a foreign tool's closing tag loose in a tool body has no other reading.
+ *
+ * The guard mirrors the `</parameter>`-for-`</content>` tolerance already below: if the *correct*
+ * closing tag turns up later, this is not the close and we keep looking. That is what keeps a model
+ * that writes prose about `</read_file>` between two real calls from having the first one closed
+ * early.
+ *
+ * @returns the matched closing tag, or undefined when this position does not close the tool.
+ */
+function mismatchedToolCloseTagAt(message: string, index: number, openTool: ToolUseName): string | undefined {
+	// Called per character while inside a tool body, so reject the overwhelming majority before
+	// doing any work.
+	if (message[index] !== ">") {
+		return undefined
+	}
+
+	// ⚠️ Any closing tag, not only another tool's. The first version of this accepted only
+	// `</known_tool>`, which covered the reported `</read_file>` and nothing else — and the protocol
+	// harness immediately found `<execute_command><command>…</command></function>`, where the model
+	// had reached for the Anthropic function-call convention's closer. Enumerating the wrong closers
+	// a model might invent is a losing game; what identifies the close is the *position*, not the
+	// name. Nothing but a close belongs here.
+	const start = message.lastIndexOf("</", index)
+	if (start === -1 || !/^<\/[A-Za-z][\w.-]*>$/.test(message.slice(start, index + 1))) {
+		return undefined
+	}
+
+	const tag = message.slice(start, index + 1)
+	if (tag === `</${openTool}>`) {
+		return undefined
+	}
+	// ⚠️ Not a parameter's closing tag. The parameter branch above deliberately does *not* advance
+	// the index when it closes a value — "need to check for tool close or other params at index i" —
+	// so this function is called at the `>` of `</path>` and `</content>` on every well-formed call.
+	// Treating those as the tool's close ended the call at its first parameter and dropped every
+	// parameter after it.
+	if (toolParamNames.some((param) => tag === `</${param}>`)) {
+		return undefined
+	}
+	// Only when the tool's own closing tag never arrives — otherwise that one is the close, and
+	// consuming this position would truncate the parameters between here and there.
+	return message.includes(`</${openTool}>`, index + 1) ? undefined : tag
+}
+
+/**
  * @description **Version 2**
  * Parses an assistant message string potentially containing mixed text and tool usage blocks
  * marked with XML-like tags into an array of structured content objects.
@@ -23,6 +79,21 @@ import { AssistantMessageContent, TextContent, ToolUse, ToolParamName, toolParam
  * @returns An array of `AssistantMessageContent` objects, which can be `TextContent` or `ToolUse`.
  *          Blocks that were not fully closed by the end of the input string will have their `partial` flag set to `true`.
  */
+/**
+ * Parameters whose value is arbitrary text, so a literal `</parameter>` inside one may be content
+ * rather than a mis-closed tag.
+ *
+ * For these, a `</parameter>` is only taken as the close when the parameter's own closing tag never
+ * arrives. Every other parameter is a short scalar — a path, a URL, an action name — where the
+ * literal has no business appearing, so the first `</parameter>` is the close outright.
+ *
+ * ⚠️ Deferring for *all* parameters is what made the fix ineffective on the observed case:
+ * `<action>go_to_url</parameter><parameter>url…</action>` does eventually carry `</action>`, so the
+ * deferral fired and `action` swallowed the whole rest of the call — which is the failure being
+ * fixed, restored by the guard meant to make the fix safe.
+ */
+const FREE_TEXT_PARAMS: ReadonlySet<string> = new Set(["content", "diff"])
+
 export function parseAssistantMessageV2(assistantMessage: string): AssistantMessageContent[] {
 	const contentBlocks: AssistantMessageContent[] = []
 	let currentTextContentStart = 0 // Index where the current text block started
@@ -68,15 +139,21 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 				currentParamName = undefined // Go back to parsing tool content
 				// We don't continue loop here, need to check for tool close or other params at index i
 			} else if (
-				// Handle mismatched closing tags: LLM may use wrong closing tag for content param
-				currentParamName === "content" &&
-				currentToolUse.name === "write_to_file" &&
+				// Handle mismatched closing tags: the model closes a parameter with `</parameter>`,
+				// the Anthropic function-call dialect's closer, instead of the parameter's own name.
+				//
+				// ⚠️ This was restricted to `write_to_file`'s `content`, and a real session showed why
+				// that is not where it happens. Asked about a coding standard it had never been told
+				// about, the model reached for the browser and wrote
+				// `<browser_action><action>go_to_url</parameter><parameter>url…`, so `action` swallowed
+				// the rest of the call and came out as a value no executor could use. Dialect mixing is
+				// a property of the model, not of one tool and one parameter.
 				currentCharIndex >= 10 &&
 				assistantMessage.startsWith("</parameter>", currentCharIndex - 10)
 			) {
 				// Check if the correct closing tag exists later in the string
 				const remainingAfterThis = assistantMessage.slice(currentCharIndex + 1)
-				if (!remainingAfterThis.includes("</content>")) {
+				if (!FREE_TEXT_PARAMS.has(currentParamName) || !remainingAfterThis.includes(`</${currentParamName}>`)) {
 					// No correct closing tag found later - treat the mismatched tag as the close tag
 					const value = assistantMessage.slice(currentParamValueStart, currentCharIndex - 10).trim()
 					currentToolUse.params[currentParamName] = value
@@ -106,12 +183,15 @@ export function parseAssistantMessageV2(assistantMessage: string): AssistantMess
 				continue // Handled start of param, move to next char
 			}
 
-			// Check if closing the current tool use
-			const toolCloseTag = `</${currentToolUse.name}>`
-			if (
-				currentCharIndex >= toolCloseTag.length - 1 &&
-				assistantMessage.startsWith(toolCloseTag, currentCharIndex - toolCloseTag.length + 1)
-			) {
+			// Check if closing the current tool use — either by its own name, or by another tool's
+			// closing tag when that is the only close the model sent (see mismatchedToolCloseTagAt).
+			const ownCloseTag = `</${currentToolUse.name}>`
+			const toolCloseTag =
+				currentCharIndex >= ownCloseTag.length - 1 &&
+				assistantMessage.startsWith(ownCloseTag, currentCharIndex - ownCloseTag.length + 1)
+					? ownCloseTag
+					: mismatchedToolCloseTagAt(assistantMessage, currentCharIndex, currentToolUse.name)
+			if (toolCloseTag) {
 				// End of the tool use found
 				// Special handling for content params *before* finalizing the tool
 				const toolContentSlice = assistantMessage.slice(
@@ -305,8 +385,21 @@ export function parseAssistantMessageV3(assistantMessage: string): AssistantMess
 
 		// --- State: Parsing Function Calls ---
 		// Check for opening function_calls tag
+		//
+		// ⚠️ `!currentToolUse && !currentParamName` — without them this branch fires on the literal
+		// string `<function_calls>` appearing *inside* a parameter value, because it is tested first
+		// in the loop and was guarded only against re-entry. A `write_to_file` whose content mentioned
+		// the tag flipped the parser into function-call mode mid-value, the tool use never closed, and
+		// the write was discarded at end of stream with the model told its response was cut off.
+		//
+		// So asking this extension to write a file about tool calling — documentation, a prompt
+		// template, an XML fixture — destroyed that file, and only for the next-gen model families
+		// that select V3. Found by the protocol harness reporting a V2/V3 divergence on a live
+		// answer; the two parsers disagreeing is the whole reason it runs both.
 		if (
 			!inFunctionCalls &&
+			!currentToolUse &&
+			!currentParamName &&
 			currentCharIndex >= isFunctionCallsOpen.length - 1 &&
 			assistantMessage.startsWith(isFunctionCallsOpen, currentCharIndex - isFunctionCallsOpen.length + 1)
 		) {
@@ -724,6 +817,20 @@ export function parseAssistantMessageV3(assistantMessage: string): AssistantMess
 				currentToolUse.params[currentParamName] = value
 				currentParamName = undefined // Go back to parsing tool content
 				// We don't continue loop here, need to check for tool close or other params at index i
+			} else if (currentCharIndex >= 10 && assistantMessage.startsWith("</parameter>", currentCharIndex - 10)) {
+				// The same dialect-mixing tolerance V2 carries: `</parameter>` is the Anthropic
+				// function-call closer, and a model that reaches for it mid-XML-call otherwise lets one
+				// parameter swallow the whole rest of the call. Guarded identically — if the
+				// parameter's own closing tag turns up later, that one is the close.
+				const remainingAfterThis = assistantMessage.slice(currentCharIndex + 1)
+				if (!FREE_TEXT_PARAMS.has(currentParamName) || !remainingAfterThis.includes(`</${currentParamName}>`)) {
+					currentToolUse.params[currentParamName] = assistantMessage
+						.slice(currentParamValueStart, currentCharIndex - 10)
+						.trim()
+					currentParamName = undefined
+				} else {
+					continue
+				}
 			} else {
 				continue // Still inside param value, move to next char
 			}
@@ -746,12 +853,15 @@ export function parseAssistantMessageV3(assistantMessage: string): AssistantMess
 				continue // Handled start of param, move to next char
 			}
 
-			// Check if closing the current tool use
-			const toolCloseTag = `</${currentToolUse.name}>`
-			if (
-				currentCharIndex >= toolCloseTag.length - 1 &&
-				assistantMessage.startsWith(toolCloseTag, currentCharIndex - toolCloseTag.length + 1)
-			) {
+			// Check if closing the current tool use — either by its own name, or by another tool's
+			// closing tag when that is the only close the model sent (see mismatchedToolCloseTagAt).
+			const ownCloseTag = `</${currentToolUse.name}>`
+			const toolCloseTag =
+				currentCharIndex >= ownCloseTag.length - 1 &&
+				assistantMessage.startsWith(ownCloseTag, currentCharIndex - ownCloseTag.length + 1)
+					? ownCloseTag
+					: mismatchedToolCloseTagAt(assistantMessage, currentCharIndex, currentToolUse.name)
+			if (toolCloseTag) {
 				// End of the tool use found
 				// Special handling for content params *before* finalizing the tool
 				const toolContentSlice = assistantMessage.slice(

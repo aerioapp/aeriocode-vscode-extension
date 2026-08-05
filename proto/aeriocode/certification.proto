@@ -50,22 +50,43 @@ message CertificationStatusResponse {
   string profile_standard = 2;
   string profile_level = 3;
   int32 traced_count = 4;
+  // Requirements carrying at least one traceability link, as a percentage of all
+  // requirements. This is NOT structural coverage — see CoverageEnforcement.
+  int32 traceability_coverage_percent = 6;
   int32 untraced_count = 5;
-  int32 coverage_percent = 6;
   string last_audit_entry = 7;
   string integrity_status = 8;
   CoverageEnforcement enforcement = 9;
 }
 
+// Where a project stands against its assurance level.
+//
+// The two kinds of coverage are kept apart deliberately. Traceability coverage says how
+// much of the requirement set is linked to artifacts; structural coverage says how much
+// of the code the requirements-based tests actually exercised. DO-178C sets objectives
+// for both, and they are not substitutes: an earlier version of this message carried a
+// single `passed` computed from traceability alone while reporting `coverage_metric:
+// "MC/DC"`, which told a DAL A user their MC/DC objective was met on the strength of
+// requirement links. There is deliberately no general `passed` field, so no consumer can
+// render that claim again.
 message CoverageEnforcement {
   int32 requirements_met = 1;
   int32 requirements_total = 2;
-  bool passed = 3;
   string level_id = 4;
-  int32 required_coverage = 5;
-  int32 actual_coverage = 6;
-  string coverage_metric = 7;
   string message = 8;
+
+  // Traceability.
+  bool traceability_passed = 3;
+  int32 required_traceability_coverage = 5;
+  int32 traceability_coverage = 6;
+
+  // Structural. `required_structural_metric` is what the level demands (MC/DC at DAL A,
+  // decision at DAL B, statement at DAL C). `structural_coverage_available` is false
+  // until a coverage run has been ingested, and `structural_coverage` is meaningless
+  // while it is false — absence is reported, never inferred.
+  string required_structural_metric = 7;
+  bool structural_coverage_available = 9;
+  int32 structural_coverage = 10;
 }
 
 message ActivateProfileRequest {

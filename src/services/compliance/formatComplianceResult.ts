@@ -16,7 +16,15 @@ function formatFinding(finding: ComplianceFinding): string {
 	const confidence = finding.confidence === "high" ? "" : ` [confidence: ${finding.confidence}]`
 	const fixable = finding.fixable ? ` [autofix: ${finding.fixable}]` : ""
 
-	return `AV Rule ${finding.ruleId} (${finding.severity}) — ${location}${confidence}${fixable}\n    ${finding.message}`
+	// ⚠️ No standard prefix. This read `AV Rule ${ruleId}` from when JF-AV++ was the only pack, and
+	// every pack since inherited it — so an Aerio Safety Coding Standard finding was reported to the
+	// model as "AV Rule CTRL-4", a rule id that exists in no standard at all. The gate feeds this
+	// text straight into the repair turn, which makes it the same class of defect as the rest of this
+	// programme: the model told something false about its own work, with nothing to act on.
+	//
+	// Rule ids already carry their own namespace — `CTRL-4`, `Rule 17.6`, `189` — so there is nothing
+	// for a prefix to add, and any fixed one is wrong for four of the five packs.
+	return `${finding.ruleId} (${finding.severity}) — ${location}${confidence}${fixable}\n    ${finding.message}`
 }
 
 export function formatAnalyzeResult(result: AnalyzeResult): string {
@@ -49,11 +57,18 @@ export function formatAnalyzeResult(result: AnalyzeResult): string {
 
 	// Always state coverage. A clean run over 42 of 229 rules is not full conformance,
 	// and the model must not report it as such.
+	//
+	// The partial count is named in the same sentence when the backend supplies it. Without it the
+	// model reads "111 of 229 checked automatically" and reports exactly that to the user, while
+	// some of those 111 were checked only as far as one file's syntax tree reaches. Stating the
+	// number is what stops a caveat the engine knows about from being dropped in the retelling.
+	const partial = summary.coverage.rulesPartiallyAutomated
 	lines.push(
 		`Coverage: ${summary.coverage.rulesAutomated} of ` +
 			`${definedRuleCount(summary.coverage.rulesAutomated, summary.coverage.rulesManualReview)} ` +
-			`rules are checked automatically. ` +
-			`${summary.coverage.rulesManualReview} require human review and were NOT evaluated.`,
+			`rules are checked automatically` +
+			(partial ? `, of which ${partial} are checked only in part — those rules declare an analysis limit` : "") +
+			`. ${summary.coverage.rulesManualReview} require human review and were NOT evaluated.`,
 	)
 
 	if (result.skipped.length > 0) {
@@ -125,10 +140,10 @@ export function formatAutofixResult(result: AutofixResult): string {
 		lines.push(`${file.file}:`)
 
 		for (const applied of file.applied) {
-			lines.push(`  fixed AV Rule ${applied.ruleId} at line ${applied.line} — ${applied.description}`)
+			lines.push(`  fixed ${applied.ruleId} at line ${applied.line} — ${applied.description}`)
 		}
 		for (const skipped of file.skipped) {
-			lines.push(`  skipped AV Rule ${skipped.ruleId} at line ${skipped.line} — ${skipped.reason}`)
+			lines.push(`  skipped ${skipped.ruleId} at line ${skipped.line} — ${skipped.reason}`)
 		}
 
 		if (file.diff) {

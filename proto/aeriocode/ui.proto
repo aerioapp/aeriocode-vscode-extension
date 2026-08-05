@@ -273,6 +273,10 @@ service UiService {
   // Opens the compliance panel from the extension host (command palette, editor action).
   rpc subscribeToComplianceButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
 
+  // Opens the verification panel. The webview owns the navigation, exactly as it does for
+  // settings, history, traceability and compliance — the command palette entry only broadcasts.
+  rpc subscribeToVerificationButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
+
   // Subscribe to audit trail button clicked events
   rpc subscribeToAuditTrailButtonClicked(WebviewProviderTypeRequest) returns (stream Empty);
 

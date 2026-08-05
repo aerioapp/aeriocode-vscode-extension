@@ -125,7 +125,7 @@ const ComplianceResults = ({ result }: ComplianceResultsProps) => {
 									<span
 										className="text-[11px] font-medium whitespace-nowrap"
 										style={{ color: severityColor(finding) }}>
-										AV {finding.ruleId}
+										{finding.ruleId}
 									</span>
 									<div className="flex-grow min-w-0">
 										<div className="text-[12px] text-[var(--vscode-foreground)]">{finding.message}</div>
@@ -146,7 +146,7 @@ const ComplianceResults = ({ result }: ComplianceResultsProps) => {
 													autofix: {finding.fixable}
 												</span>
 											)}
-											{finding.ruleStatement && (
+											{finding.ruleSummary && (
 												<VSCodeLink
 													className="text-[10px]"
 													onClick={() => setExpanded(isOpen ? null : key)}>
@@ -157,7 +157,7 @@ const ComplianceResults = ({ result }: ComplianceResultsProps) => {
 
 										{isOpen && (
 											<div className="mt-[6px] text-[11px] text-[var(--vscode-descriptionForeground)]">
-												<div>{finding.ruleStatement}</div>
+												<div>{finding.ruleSummary}</div>
 												{finding.ruleRationale && (
 													<div className="mt-[4px] italic">{finding.ruleRationale}</div>
 												)}

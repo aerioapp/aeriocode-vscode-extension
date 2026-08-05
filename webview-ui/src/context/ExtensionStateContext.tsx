@@ -47,6 +47,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	showAuditTrail: boolean
 	showProfileSetup: boolean
 	showCompliance: boolean
+	showVerification: boolean
 	showAnnouncement: boolean
 
 	// Certification state
@@ -86,6 +87,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	navigateToAuditTrail: () => void
 	navigateToProfileSetup: () => void
 	navigateToCompliance: () => void
+	navigateToVerification: () => void
 
 	// Hide functions
 	hideSettings: () => void
@@ -95,6 +97,7 @@ interface ExtensionStateContextType extends ExtensionState {
 	hideAuditTrail: () => void
 	hideProfileSetup: () => void
 	hideCompliance: () => void
+	hideVerification: () => void
 	hideAnnouncement: () => void
 	closeMcpView: () => void
 
@@ -120,6 +123,7 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [showAuditTrail, setShowAuditTrail] = useState(false)
 	const [showProfileSetup, setShowProfileSetup] = useState(false)
 	const [showCompliance, setShowCompliance] = useState(false)
+	const [showVerification, setShowVerification] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 
 	// Helper for MCP view
@@ -137,6 +141,7 @@ export const ExtensionStateContextProvider: React.FC<{
 	const hideAuditTrail = useCallback(() => setShowAuditTrail(false), [setShowAuditTrail])
 	const hideProfileSetup = useCallback(() => setShowProfileSetup(false), [setShowProfileSetup])
 	const hideCompliance = useCallback(() => setShowCompliance(false), [setShowCompliance])
+	const hideVerification = useCallback(() => setShowVerification(false), [setShowVerification])
 
 	// Navigation functions
 	const navigateToMcp = useCallback(
@@ -163,6 +168,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowSettings(true)
 	}, [
 		setShowSettings,
@@ -173,6 +179,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail,
 		setShowProfileSetup,
 		setShowCompliance,
+		setShowVerification,
 	])
 
 	const navigateToHistory = useCallback(() => {
@@ -183,6 +190,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowHistory(true)
 	}, [
 		setShowSettings,
@@ -203,6 +211,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowAccount(true)
 	}, [
 		setShowSettings,
@@ -224,6 +233,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 	}, [
 		setShowSettings,
 		closeMcpView,
@@ -233,6 +243,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail,
 		setShowProfileSetup,
 		setShowCompliance,
+		setShowVerification,
 	])
 
 	const navigateToTraceability = useCallback(() => {
@@ -243,6 +254,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowTraceability(true)
 	}, [
 		setShowSettings,
@@ -263,6 +275,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowTraceability(false)
 		setShowProfileSetup(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowAuditTrail(true)
 	}, [
 		setShowSettings,
@@ -283,6 +296,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowTraceability(false)
 		setShowAuditTrail(false)
 		setShowCompliance(false)
+		setShowVerification(false)
 		setShowProfileSetup(true)
 	}, [
 		setShowSettings,
@@ -293,6 +307,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail,
 		setShowProfileSetup,
 		setShowCompliance,
+		setShowVerification,
 	])
 
 	const navigateToCompliance = useCallback(() => {
@@ -313,6 +328,29 @@ export const ExtensionStateContextProvider: React.FC<{
 		setShowAuditTrail,
 		setShowProfileSetup,
 		setShowCompliance,
+		setShowVerification,
+	])
+
+	const navigateToVerification = useCallback(() => {
+		setShowSettings(false)
+		closeMcpView()
+		setShowHistory(false)
+		setShowAccount(false)
+		setShowTraceability(false)
+		setShowAuditTrail(false)
+		setShowProfileSetup(false)
+		setShowCompliance(false)
+		setShowVerification(true)
+	}, [
+		setShowSettings,
+		closeMcpView,
+		setShowHistory,
+		setShowAccount,
+		setShowTraceability,
+		setShowAuditTrail,
+		setShowProfileSetup,
+		setShowCompliance,
+		setShowVerification,
 	])
 
 	const [state, setState] = useState<ExtensionState>({
@@ -397,6 +435,7 @@ export const ExtensionStateContextProvider: React.FC<{
 	// Certification button subscription refs
 	const traceabilityButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 	const complianceButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
+	const verificationButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 	const auditTrailButtonClickedSubscriptionRef = useRef<(() => void) | null>(null)
 
 	// Add ref for callbacks
@@ -606,6 +645,24 @@ export const ExtensionStateContextProvider: React.FC<{
 			},
 		)
 
+		// Set up verification button clicked subscription
+		verificationButtonClickedSubscriptionRef.current = UiServiceClient.subscribeToVerificationButtonClicked(
+			WebviewProviderTypeRequest.create({
+				providerType: currentProviderType,
+			}),
+			{
+				onResponse: () => {
+					navigateToVerification()
+				},
+				onError: (error) => {
+					console.error("Error in verification button clicked subscription:", error)
+				},
+				onComplete: () => {
+					console.log("Verification button clicked subscription completed")
+				},
+			},
+		)
+
 		// Set up audit trail button clicked subscription
 		auditTrailButtonClickedSubscriptionRef.current = UiServiceClient.subscribeToAuditTrailButtonClicked(
 			WebviewProviderTypeRequest.create({
@@ -806,6 +863,10 @@ export const ExtensionStateContextProvider: React.FC<{
 				complianceButtonClickedSubscriptionRef.current()
 				complianceButtonClickedSubscriptionRef.current = null
 			}
+			if (verificationButtonClickedSubscriptionRef.current) {
+				verificationButtonClickedSubscriptionRef.current()
+				verificationButtonClickedSubscriptionRef.current = null
+			}
 			if (auditTrailButtonClickedSubscriptionRef.current) {
 				auditTrailButtonClickedSubscriptionRef.current()
 				auditTrailButtonClickedSubscriptionRef.current = null
@@ -874,6 +935,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		showAuditTrail,
 		showProfileSetup,
 		showCompliance,
+		showVerification,
 		showAnnouncement,
 		certificationActive,
 		certificationProfile,
@@ -897,6 +959,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		navigateToAuditTrail,
 		navigateToProfileSetup,
 		navigateToCompliance,
+		navigateToVerification,
 
 		// Hide functions
 		hideSettings,
@@ -906,6 +969,7 @@ export const ExtensionStateContextProvider: React.FC<{
 		hideAuditTrail,
 		hideProfileSetup,
 		hideCompliance,
+		hideVerification,
 		hideAnnouncement,
 		setShowAnnouncement,
 		setShouldShowAnnouncement: (value) =>

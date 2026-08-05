@@ -68,7 +68,7 @@ describe("compliance backend integration", function () {
 		expect(result.summary.mandatoryClean).to.equal(false)
 
 		const gotoFinding = result.findings.find((f) => f.ruleId === "189")
-		expect(gotoFinding, "goto should be reported as AV Rule 189").to.not.equal(undefined)
+		expect(gotoFinding, "goto should be reported as rule 189").to.not.equal(undefined)
 		expect(gotoFinding!.line).to.equal(6)
 	})
 

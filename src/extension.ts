@@ -14,6 +14,7 @@ import { sendMcpButtonClickedEvent } from "./core/controller/ui/subscribeToMcpBu
 import { sendSettingsButtonClickedEvent } from "./core/controller/ui/subscribeToSettingsButtonClicked"
 import { sendTraceabilityButtonClickedEvent } from "./core/controller/ui/subscribeToTraceabilityButtonClicked"
 import { sendComplianceButtonClickedEvent } from "./core/controller/ui/subscribeToComplianceButtonClicked"
+import { sendVerificationButtonClickedEvent } from "./core/controller/ui/subscribeToVerificationButtonClicked"
 import { sendAuditTrailButtonClickedEvent } from "./core/controller/ui/subscribeToAuditTrailButtonClicked"
 import { WebviewProvider } from "./core/webview"
 import { createAeriocodeAPI } from "./exports"
@@ -36,6 +37,8 @@ import { telemetryService } from "./services/telemetry"
 import { SharedUriHandler } from "./services/uri/SharedUriHandler"
 import { ShowMessageType } from "./shared/proto/host/window"
 import { CertificationManager } from "./certification"
+import { setComplianceAuditSink } from "./services/compliance/ComplianceAudit"
+import { ComplianceStatusBar } from "@/services/compliance/ComplianceStatusBar"
 import { ComplianceDiagnostics } from "./services/compliance/ComplianceDiagnostics"
 /*
 Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -59,10 +62,21 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize test mode and add disposables to context
 	context.subscriptions.push(...testModeWatchers)
 
+	// Shows which coding standard is in force, and hides itself when none is. Believing a standard
+	// is being enforced when it is not is the silent failure this feature exists to prevent, so the
+	// state needs somewhere visible to live.
+	context.subscriptions.push(new ComplianceStatusBar())
+
 	// Initialize certification system (local-first traceability and audit trail)
 	// Always create the singleton so gRPC handlers don't throw, but only init DB if sql.js loads
 	try {
 		const certManager = CertificationManager.getInstance(context)
+
+		// Route compliance runs into the audit trail. Installed before the database is
+		// initialised because the manager no-ops while inactive anyway, and installing it
+		// here means every path into a compliance check is covered from activation rather
+		// than from whenever the first check happens to run.
+		setComplianceAuditSink(certManager)
 
 		// Initialize sql.js WASM for certification database
 		const { SqlJsDatabase } = await import("@/certification/db/SqlJsDatabase")
@@ -604,6 +618,18 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Broadcast: hardcoding SIDEBAR here would have failed when the command is run
 			// from the editor-tab webview's title bar.
 			await sendComplianceButtonClickedEvent()
+		}),
+	)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.openVerification", async () => {
+			telemetryService.captureButtonClick("command_openVerification")
+			// Opens the panel rather than running any one tool: coverage, traceability, test
+			// generation and the document drafts are one workflow, and which step a programme is on
+			// is not something a command can guess.
+			await vscode.commands.executeCommand("aeriocode.focusChatInput")
+			// Broadcast: hardcoding SIDEBAR here would fail when the command is run from the
+			// editor-tab webview's title bar.
+			await sendVerificationButtonClickedEvent()
 		}),
 	)
 	context.subscriptions.push(

@@ -73,7 +73,7 @@ export async function runComplianceCheck(
 	}
 
 	try {
-		const result = await ComplianceClient.getInstance().analyze(request.standard, files)
+		const result = await ComplianceClient.getInstance().analyze(request.standard, files, { trigger: "panel" })
 
 		// Group by file so each document's diagnostics replace that document's previous
 		// ones. Analyzed-but-clean files are cleared explicitly.
@@ -112,7 +112,7 @@ export async function runComplianceCheck(
 					message: finding.message,
 					confidence: finding.confidence,
 					fixable: finding.fixable ?? "",
-					ruleStatement: finding.rule?.statement ?? "",
+					ruleSummary: finding.rule?.summary ?? "",
 					ruleRationale: finding.rule?.rationale ?? "",
 				}),
 			),

@@ -16,13 +16,20 @@ export class HumanDecisionCapture {
 	}
 
 	/**
-	 * Capture a human decision on an AI suggestion.
+	 * Capture a human decision on a proposed change.
+	 *
+	 * Usually an AI suggestion, in which case `generation_id` links the decision to what
+	 * the model produced. A compliance autofix has no generation — it is deterministic
+	 * tool output — so it is recorded with a null generation and identified by its
+	 * subject instead. `human_decisions.generation_id` is nullable for this reason.
 	 */
 	async captureDecision(params: DecisionParams): Promise<void> {
 		const now = new Date().toISOString()
-		const generation = this.db.getGeneration(params.generation_id)
+		const generation = params.generation_id ? this.db.getGeneration(params.generation_id) : undefined
 
 		const decisionId = `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+		const subjectType = params.subject_type ?? "ai_suggestion"
+		const subjectId = params.generation_id ?? params.subject_id
 
 		this.db.insertDecision({
 			decision_id: decisionId,
@@ -44,15 +51,18 @@ export class HumanDecisionCapture {
 			event_type: "human_decision",
 			event_action: params.decision,
 			user_id: params.user_id,
-			entity_type: "ai_suggestion",
-			entity_id: params.generation_id,
+			entity_type: subjectType,
+			entity_id: subjectId,
 			model_id: generation?.model_id || undefined,
+			profile_id: params.profile_id,
 			payload: {
 				decision_id: decisionId,
-				generation_id: params.generation_id,
+				subject_type: subjectType,
+				generation_id: params.generation_id ?? null,
 				decision: params.decision,
 				files_affected: params.files_affected || [],
 				rationale: params.rationale || null,
+				compliance_notes: params.compliance_notes || null,
 				modifications_summary: params.diff_summary || null,
 			},
 		})

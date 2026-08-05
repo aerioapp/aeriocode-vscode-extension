@@ -23,7 +23,7 @@ function finding(overrides: Partial<ComplianceFinding> = {}): ComplianceFinding 
 		message: "`goto` is prohibited.",
 		confidence: "high",
 		fixable: null,
-		rule: { statement: "The goto statement shall not be used.", rationale: null, exception: null, section: "4.24" },
+		rule: { summary: "Do not transfer control with goto.", rationale: null, exception: null, section: "4.24" },
 		...overrides,
 	}
 }
@@ -69,6 +69,31 @@ describe("formatAnalyzeResult", () => {
 		// catalog entries, so the two figures account for the whole of it.
 		expect(text).to.contain("42 of 229 rules are checked automatically")
 		expect(text).to.contain("187 require human review and were NOT evaluated")
+	})
+
+	it("names the rules that were checked only in part, in the same sentence", () => {
+		// This text is what the model reads and retells to the user. Left out, "42 of 229 checked
+		// automatically" is what gets reported, while some of those 42 were checked only as far as
+		// one file's syntax tree reaches — a caveat the backend knows and the retelling drops.
+		const text = formatAnalyzeResult(
+			analyzeResult({
+				summary: {
+					...analyzeResult().summary,
+					coverage: { ...analyzeResult().summary.coverage, rulesPartiallyAutomated: 12 },
+				},
+			}),
+		)
+
+		expect(text).to.contain("12 are checked only in part")
+		expect(text).to.contain("187 require human review and were NOT evaluated")
+	})
+
+	it("says nothing about partial coverage when the backend does not report it", () => {
+		// An older backend sends no such field. Printing "0 checked only in part" would be a claim
+		// nobody made, and the wrong one — it would read as "all 42 were checked in full".
+		const text = formatAnalyzeResult(analyzeResult())
+
+		expect(text).to.not.contain("in part")
 	})
 
 	it("does not raise gaps in the standard's own rule numbering", () => {
@@ -121,7 +146,7 @@ describe("formatAnalyzeResult", () => {
 		)
 
 		expect(text).to.contain("1 MANDATORY violation(s) — these must be fixed.")
-		expect(text).to.contain("AV Rule 189 (shall not) — line 4")
+		expect(text).to.contain("189 (shall not) — line 4")
 	})
 
 	it("marks findings that rely on a heuristic", () => {
@@ -240,6 +265,25 @@ describe("formatAutofixResult", () => {
 			}),
 		)
 
-		expect(text).to.contain("skipped AV Rule 185 at line 9 — no mechanical fix applies here")
+		expect(text).to.contain("skipped 185 at line 9 — no mechanical fix applies here")
+	})
+
+	it("does not prefix a rule id with another standard's namespace", () => {
+		// ⚠️ Every finding was rendered `AV Rule ${ruleId}` — correct while JF-AV++ was the only pack,
+		// and inherited by the four packs added since. An Aerio Safety Coding Standard finding reached
+		// the model as "AV Rule CTRL-4", and a MISRA one as "AV Rule Rule 17.6": ids belonging to no
+		// standard, in the text the compliance gate feeds straight into its repair turn.
+		//
+		// Found in a screenshot of the shipped panel, not by any test, because every fixture used a
+		// bare JF-AV++ number where the wrong prefix reads as the right one. This one uses a rule id
+		// carrying its own namespace, which is the case the old format could not express.
+		const text = formatAnalyzeResult(
+			analyzeResult({
+				findings: [finding({ ruleId: "CTRL-4", severity: "mandatory", line: 12, endLine: 12 })],
+			}),
+		)
+
+		expect(text).to.contain("CTRL-4 (mandatory) — line 12")
+		expect(text).to.not.contain("AV ")
 	})
 })

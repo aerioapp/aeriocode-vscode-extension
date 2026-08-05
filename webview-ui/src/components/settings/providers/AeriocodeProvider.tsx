@@ -65,30 +65,6 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 					},
 				},
 				{
-					id: "AerioCode-DO178C",
-					info: {
-						maxTokens: 32000,
-						contextWindow: 1_000_000,
-						supportsImages: false,
-						supportsPromptCache: false,
-						inputPrice: 0,
-						outputPrice: 0,
-						description: "AerioCode specialized for DO-178C compliance",
-					},
-				},
-				{
-					id: "AerioCode-JFAVpp",
-					info: {
-						maxTokens: 32000,
-						contextWindow: 1_000_000,
-						supportsImages: false,
-						supportsPromptCache: false,
-						inputPrice: 0,
-						outputPrice: 0,
-						description: "AerioCode specialized for JF-AV++ C++ coding standards compliance",
-					},
-				},
-				{
 					id: "AerioCode-mini",
 					info: {
 						maxTokens: 32000,
@@ -130,7 +106,7 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 					},
 				},
 				{
-					id: "AerioCode-DO178C",
+					id: "AerioCode-mini",
 					info: {
 						maxTokens: 32000,
 						contextWindow: 1_000_000,
@@ -138,19 +114,7 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 						supportsPromptCache: false,
 						inputPrice: 0,
 						outputPrice: 0,
-						description: "AerioCode specialized for DO-178C compliance",
-					},
-				},
-				{
-					id: "AerioCode-JFAVpp",
-					info: {
-						maxTokens: 32000,
-						contextWindow: 1_000_000,
-						supportsImages: false,
-						supportsPromptCache: false,
-						inputPrice: 0,
-						outputPrice: 0,
-						description: "AerioCode specialized for JF-AV++ C++ coding standards compliance",
+						description: "AerioCode Mini, for short edits and repair turns",
 					},
 				},
 			])
@@ -191,17 +155,11 @@ export const AeriocodeProvider = ({ showModelOptions, isPopup, currentMode }: Ae
 										key={model.id}
 										value={model.id}
 										style={{ minHeight: "30px", padding: "5px 10px" }}>
-										{model.id === "AerioCode"
-											? "AerioCode"
-											: model.id === "AerioCode-DO178C"
-												? "AerioCode DO-178C"
-												: model.id === "AerioCode-JFAVpp"
-													? "AerioCode JF-AV++"
-													: model.id === "AerioCode-mini"
-														? "AerioCode Mini"
-														: model.id
-																.replace(/-/g, " ")
-																.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+										{model.id === "AerioCode-mini"
+											? "AerioCode Mini"
+											: model.id === "AerioCode"
+												? "AerioCode"
+												: model.id.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}
 									</VSCodeOption>
 								))}
 							</VSCodeDropdown>

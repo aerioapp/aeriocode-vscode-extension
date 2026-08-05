@@ -23,7 +23,7 @@ const CertificationStatusBar = ({ onClick }: CertificationStatusBarProps) => {
 					active: response.active,
 					profileStandard: response.profileStandard,
 					profileLevel: response.profileLevel,
-					coveragePercent: response.coveragePercent,
+					coveragePercent: response.traceabilityCoveragePercent,
 				})
 			} catch (error) {
 				console.error("Failed to fetch certification status:", error)

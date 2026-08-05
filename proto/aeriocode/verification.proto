@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package aeriocode;
+import "aeriocode/common.proto";
+option java_package = "bot.aeriocode.proto";
+option java_multiple_files = true;
+
+// VerificationService - the DO-178C verification tools.
+//
+// Five backend services shipped complete and reachable only over REST: structural coverage,
+// ReqIF traceability, requirements-based test generation, DO-178C document drafts, and the
+// DO-330 qualification kit. Everything a certification programme actually buys was there and
+// a user with the extension installed could not get to any of it. This is that surface.
+//
+// One service rather than five, because they are one workflow: instrument, run on the target,
+// submit the trace, import the requirements baseline, build the matrix, generate the artifacts.
+// Each step's output feeds the next, and five services would have made that sequence something
+// the caller assembles.
+//
+// Every analysis runs in the backend. The coverage map, the rule packs, the objective tables and
+// the document templates never cross this boundary — this repository is public and the .vsix is
+// downloadable, so what ships to a client is published.
+service VerificationService {
+  // --- Structural coverage -----------------------------------------------------------------
+
+  // Rewrite the selected source so that running it records coverage, and return the freestanding
+  // runtime to build alongside it. The coverage map is retained by the backend against the build
+  // id: without it a trace is a stream of numbered probe calls.
+  rpc instrumentForCoverage(InstrumentForCoverageRequest) returns (InstrumentForCoverageResponse);
+
+  // Interpret a trace the instrumented build emitted, against the map for its build id.
+  rpc analyzeCoverage(AnalyzeCoverageRequest) returns (AnalyzeCoverageResponse);
+
+  // --- Requirements ------------------------------------------------------------------------
+
+  // Import a ReqIF document — the neutral format DOORS, Polarion, Jama and codebeamer speak.
+  // Requirements never originate in Aerio, so without this the traceability module cannot be
+  // used on a real programme at all.
+  rpc importRequirements(ImportRequirementsRequest) returns (ImportRequirementsResponse);
+
+  // Build the traceability matrix in both directions over the workspace.
+  rpc buildTraceabilityMatrix(BuildTraceabilityMatrixRequest) returns (BuildTraceabilityMatrixResponse);
+
+  // --- Test generation ----------------------------------------------------------------------
+
+  // Generate requirements-based test cases. The expected result is never generated: an
+  // expectation inferred from the implementation cannot fail.
+  rpc generateRequirementsBasedTests(GenerateTestsRequest) returns (GenerateTestsResponse);
+
+  // --- Certification artifacts ----------------------------------------------------------------
+
+  // Draft a DO-178C life cycle document. Sections Aerio cannot fill are left empty and marked,
+  // never populated with generic prose.
+  rpc generateCertificationDocument(GenerateDocumentRequest) returns (GenerateDocumentResponse);
+
+  // Aerio's DO-330 qualification position. Needs no project data: a customer asks this before
+  // they have any.
+  rpc getQualificationPosition(EmptyRequest) returns (QualificationPositionResponse);
+}
+
+// --- Shared ------------------------------------------------------------------------------------
+
+// A workspace scope, resolved the same way the compliance panel resolves one.
+enum VerificationScope {
+  VERIFICATION_SCOPE_ACTIVE_FILE = 0;
+  VERIFICATION_SCOPE_OPEN_EDITORS = 1;
+  VERIFICATION_SCOPE_WORKSPACE = 2;
+}
+
+// --- Coverage ----------------------------------------------------------------------------------
+
+message InstrumentForCoverageRequest {
+  Metadata metadata = 1;
+  VerificationScope scope = 2;
+  // Distinct condition vectors the on-target runtime retains per decision. A decision whose
+  // table overflows is reported not-determinable rather than satisfied or unsatisfied.
+  int32 vectors_per_decision = 3;
+}
+
+message InstrumentedFile {
+  string path = 1;
+  string content = 2;
+}
+
+message InstrumentForCoverageResponse {
+  string build_id = 1;
+  repeated InstrumentedFile files = 2;
+  // The header and the source file. Both go into the customer's build; the arrays are declared
+  // extern in one and defined once in the other, so every translation unit shares one set.
+  repeated InstrumentedFile runtime = 3;
+  int32 statements = 4;
+  int32 decisions = 5;
+  int32 conditions = 6;
+  // Decisions with more conditions than the runtime's vector can represent. Instrumented for
+  // decision coverage only, and their MC/DC is reported not-determinable rather than guessed.
+  int32 decisions_without_mcdc = 7;
+  int32 storage_bytes = 8;
+  repeated string integration_steps = 9;
+  string note = 10;
+  string error = 11;
+}
+
+message AnalyzeCoverageRequest {
+  Metadata metadata = 1;
+  string build_id = 2;
+  // The bytes the target emitted, base64 encoded.
+  string trace_base64 = 3;
+  // Whether these tests are requirements-based. DO-178C 6.4.4.2 requires that they are, and only
+  // the applicant knows — so it is carried rather than assumed.
+  bool requirements_based_only = 4;
+  bool requirements_based_stated = 5;
+}
+
+// One form of MC/DC. Both are reported and neither is chosen for the applicant: for the left
+// operand of a short-circuiting operator no unique-cause pair can exist, so reporting that form
+// alone would state an unachievable obligation.
+message McdcFigure {
+  string form = 1;
+  int32 total = 2;
+  int32 satisfied = 3;
+  int32 not_determinable = 4;
+  double percentage = 5;
+  int32 conditions_total = 6;
+  int32 conditions_satisfied = 7;
+}
+
+message UncoveredStatement {
+  int32 id = 1;
+  string file = 2;
+  int32 line = 3;
+  string text = 4;
+}
+
+message AnalyzeCoverageResponse {
+  string build_id = 1;
+  int32 statements_total = 2;
+  int32 statements_covered = 3;
+  double statement_percentage = 4;
+  int32 decisions_total = 5;
+  int32 decisions_satisfied = 6;
+  int32 decisions_not_determinable = 7;
+  double decision_percentage = 8;
+  McdcFigure mcdc_unique_cause = 9;
+  McdcFigure mcdc_masking = 10;
+  repeated UncoveredStatement uncovered = 11;
+  string method_statement = 12;
+  string test_basis_statement = 13;
+  repeated string limits = 14;
+  string error = 15;
+}
+
+// --- Requirements --------------------------------------------------------------------------------
+
+message ImportRequirementsRequest {
+  Metadata metadata = 1;
+  // Absolute path to the .reqif file the user picked. Read by the extension, never guessed.
+  string file_path = 2;
+}
+
+message ImportedRequirement {
+  string requirement_id = 1;
+  string title = 2;
+  string description = 3;
+  string parent_requirement_id = 4;
+  string status = 5;
+}
+
+message ImportRequirementsResponse {
+  repeated ImportedRequirement requirements = 1;
+  int32 spec_objects = 2;
+  int32 imported = 3;
+  int32 skipped = 4;
+  int32 with_parent = 5;
+  string source_digest = 6;
+  string error = 7;
+}
+
+message BuildTraceabilityMatrixRequest {
+  Metadata metadata = 1;
+  VerificationScope scope = 2;
+  // The baseline to trace against, as returned by importRequirements.
+  repeated ImportedRequirement requirements = 3;
+  // Identifier shapes from the certification profile. An empty list uses the defaults.
+  repeated string requirement_id_patterns = 4;
+}
+
+message TraceabilityRow {
+  string requirement_id = 1;
+  string title = 2;
+  bool implemented = 3;
+  bool verified = 4;
+  bool is_derived = 5;
+  int32 code_references = 6;
+  int32 quality_questions = 7;
+}
+
+message BuildTraceabilityMatrixResponse {
+  repeated TraceabilityRow rows = 1;
+  int32 requirements = 2;
+  int32 implemented = 3;
+  int32 verified = 4;
+  int32 derived = 5;
+  int32 orphaned_tags = 6;
+  int32 files_with_no_tag = 7;
+  // A file with no tag is reported untagged, never as unintended functionality. Aerio cannot tell
+  // code that implements nothing from code nobody annotated.
+  string reverse_statement = 8;
+  string derived_statement = 9;
+  repeated string limits = 10;
+  string error = 11;
+}
+
+// --- Test generation -------------------------------------------------------------------------------
+
+message GenerateTestsRequest {
+  Metadata metadata = 1;
+  repeated ImportedRequirement requirements = 2;
+  // Emit compilable skeletons alongside the cases. They are written not to compile until a person
+  // fills in the expected result.
+  bool include_skeletons = 3;
+}
+
+message GeneratedTestCase {
+  string test_id = 1;
+  string requirement_id = 2;
+  string name = 3;
+  // Whether the case derives from the requirement text or from the parameter's type. A boundary
+  // derived from int32_t is derived from the type, and is not requirements-based.
+  string basis = 4;
+  string rationale = 5;
+}
+
+message GenerateTestsResponse {
+  repeated GeneratedTestCase cases = 1;
+  repeated InstrumentedFile skeletons = 2;
+  string basis_statement = 3;
+  repeated string limits = 4;
+  string error = 5;
+}
+
+// --- Certification artifacts -------------------------------------------------------------------------
+
+message GenerateDocumentRequest {
+  Metadata metadata = 1;
+  // PSAC, SDP, SVP, SCMP, SQAP, SRS, SDS, SCS, SVCP, SVR or SAS.
+  string document_id = 2;
+  string project_name = 3;
+}
+
+message DocumentSection {
+  string id = 1;
+  string title = 2;
+  string clause = 3;
+  // "aerio-data" where Aerio filled it, "applicant-must-supply" where it is deliberately empty.
+  string source = 4;
+  // The note on an empty section says what it must contain and why nobody else can write it.
+  string note = 5;
+  bool filled = 6;
+}
+
+message GenerateDocumentResponse {
+  string document_id = 1;
+  string title = 2;
+  string clause = 3;
+  repeated DocumentSection sections = 4;
+  int32 sections_generated = 5;
+  int32 sections_for_applicant = 6;
+  // Always false. A generated draft is not a submittable document, and saying so on the artifact
+  // is what stops it being mistaken for one.
+  bool complete = 7;
+  string completeness_statement = 8;
+  string content_hash = 9;
+  // Rendered Markdown, which is what a person actually works in.
+  string markdown = 10;
+  string error = 11;
+}
+
+message ToolOperationalRequirement {
+  string id = 1;
+  string title = 2;
+  string requirement = 3;
+  string rationale = 4;
+  string verification_status = 5;
+  int32 cases_run = 6;
+  int32 cases_passed = 7;
+  int32 cases_failed = 8;
+  int32 cases_skipped = 9;
+}
+
+message QualificationPositionResponse {
+  int32 criteria = 1;
+  int32 tql = 2;
+  string basis = 3;
+  string why_not_criteria_1 = 4;
+  string applicant_obligation = 5;
+  repeated ToolOperationalRequirement requirements = 6;
+  string summary_statement = 7;
+  string error = 8;
+}

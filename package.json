@@ -256,6 +256,12 @@
 				"icon": "$(symbol-ruler)"
 			},
 			{
+				"command": "aeriocode.openVerification",
+				"title": "Verification Tools",
+				"category": "Aeriocode",
+				"icon": "$(beaker)"
+			},
+			{
 				"command": "aeriocode.checkComplianceActiveFile",
 				"title": "Check Compliance of Active File",
 				"category": "Aeriocode",
@@ -460,7 +466,64 @@
 		},
 		"configuration": {
 			"title": "Aeriocode",
-			"properties": {}
+			"properties": {
+				"aeriocode.compliance.standard": {
+					"type": "string",
+					"default": "",
+					"enum": [
+						"",
+						"aerio-scs",
+						"jf-avpp",
+						"misra-c",
+						"misra-cpp",
+						"power-of-10"
+					],
+					"enumDescriptions": [
+						"Off. No coding standard is enforced and Aeriocode behaves as an ordinary assistant.",
+						"Aerio Safety Coding Standard - 148 rules, 134 checked automatically. Adoptable as a programme's Software Code Standards under DO-178C 11.8.",
+						"JF-AV++ (Air Vehicle C++). C++ only.",
+						"MISRA C. Guideline numbering is Aerio's own and unconfirmed; findings cite it as provisional.",
+						"MISRA C++. Guideline numbering is Aerio's own and unconfirmed; findings cite it as provisional.",
+						"NASA/JPL Power of 10. C only."
+					],
+					"scope": "resource",
+					"markdownDescription": "The coding standard Aeriocode holds generated code to. **Off by default** - set it per workspace so a certified repository and an internal tool can differ without you having to remember which is selected.\n\nWhen set, generated code is analysed after every write and violations are returned to the model to fix. This is not a certification and does not guarantee one: Aerio reports findings, and whether the evidence suffices is decided by the applicant and their certification authority."
+				},
+				"aeriocode.compliance.regime": {
+					"type": "string",
+					"default": "do-178c",
+					"enum": [
+						"do-178c",
+						"iso-26262"
+					],
+					"enumDescriptions": [
+						"Airborne software. Levels are DAL A to D.",
+						"Road vehicles. Levels are ASIL D to A and QM. Aerio makes no claim about which rules apply at which ASIL."
+					],
+					"scope": "resource",
+					"markdownDescription": "Which assurance regime the level below is expressed in.\n\n**ISO 26262 applicability is not yet determined.** Aerio holds no copy of ISO 26262 and states no mapping from its rules to ASILs, so selecting it applies the standard in full rather than at a graded level."
+				},
+				"aeriocode.compliance.level": {
+					"type": "string",
+					"default": "",
+					"enum": [
+						"",
+						"A",
+						"B",
+						"C",
+						"D",
+						"QM"
+					],
+					"scope": "resource",
+					"markdownDescription": "The design assurance level (DO-178C: A, B, C, D) or automotive safety integrity level (ISO 26262: D, C, B, A, QM) this software is being developed to.\n\nLeave empty if you have not been assigned one - the standard is then applied in full, which is the stricter reading. A level should be set from the system safety assessment, not chosen for convenience: it is a claim about how much assurance the software needs."
+				},
+				"aeriocode.compliance.gateEnabled": {
+					"type": "boolean",
+					"default": true,
+					"scope": "resource",
+					"markdownDescription": "Analyse generated code after every write and return violations to the model to fix.\n\nOnly has effect when a standard is set. Turning it off leaves the system prompt telling the model to follow the standard with nothing checking that it did - which is the difference between steering and verification."
+				}
+			}
 		},
 		"submenus": [
 			{

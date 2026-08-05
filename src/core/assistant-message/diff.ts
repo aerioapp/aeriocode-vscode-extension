@@ -16,17 +16,32 @@ const SEARCH_BLOCK_END_REGEX = /^[=]{3,}$/
 const REPLACE_BLOCK_END_REGEX = /^[+]{3,} REPLACE>?$/
 const LEGACY_REPLACE_BLOCK_END_REGEX = /^[>]{3,} REPLACE>?$/
 
-// Helper functions to check if a line matches the flexible patterns
+// Helper functions to check if a line matches the flexible patterns.
+//
+// ⚠️ **The line is trimmed before matching, and it was not.** Every pattern is anchored with `^`, so
+// an indented marker — `    ------- SEARCH` — matched nothing, and the consequence is the worst
+// available: the diff parses as containing no blocks at all, so the file is returned **unchanged and
+// no error is raised**. The user is told the edit succeeded and nothing happened.
+//
+// The model indents them, and reasonably: it is editing inside a class body and matching the
+// surrounding code. Five of twelve C++ modify tasks failed this way, each producing three or four
+// well-formed `replace_in_file` calls quoting real lines from the file, none of which applied.
+//
+// Trimming risks treating a line of content that reads exactly `------- SEARCH` as a marker. That
+// risk already existed for the unindented spelling and is the design's accepted trade; indentation
+// does not change its nature.
 function isSearchBlockStart(line: string): boolean {
-	return SEARCH_BLOCK_START_REGEX.test(line) || LEGACY_SEARCH_BLOCK_START_REGEX.test(line)
+	const trimmed = line.trim()
+	return SEARCH_BLOCK_START_REGEX.test(trimmed) || LEGACY_SEARCH_BLOCK_START_REGEX.test(trimmed)
 }
 
 function isSearchBlockEnd(line: string): boolean {
-	return SEARCH_BLOCK_END_REGEX.test(line)
+	return SEARCH_BLOCK_END_REGEX.test(line.trim())
 }
 
 function isReplaceBlockEnd(line: string): boolean {
-	return REPLACE_BLOCK_END_REGEX.test(line) || LEGACY_REPLACE_BLOCK_END_REGEX.test(line)
+	const trimmed = line.trim()
+	return REPLACE_BLOCK_END_REGEX.test(trimmed) || LEGACY_REPLACE_BLOCK_END_REGEX.test(trimmed)
 }
 
 /**
@@ -118,6 +133,84 @@ function lineTrimmedFallbackMatch(originalContent: string, searchContent: string
  * @param startIndex - The character index in originalContent where to start searching
  * @returns A tuple of [startIndex, endIndex] if a match is found, false otherwise
  */
+/**
+ * Match a SEARCH block whose only difference from the file is missing blank lines.
+ *
+ * ⚠️ Reported from a real session, on a file the model had just written itself. Asked to bring it
+ * into conformance, it produced a SEARCH block reproducing every line of code correctly and dropping
+ * the blank lines that separated the groups — `DERIVATIVE_GAIN` immediately followed by
+ * `// PID gains` where the file has an empty line between them.
+ *
+ * All three existing strategies fail on that, and for one shared reason. Exact obviously; line-
+ * trimmed because it compares position by position and the line *counts* differ; block-anchor
+ * because it looks for the closing anchor at a fixed offset `i + searchBlockSize - 1`, which a
+ * dropped line moves off. So the tool the gate now directs repairs to fails on whitespace carrying
+ * no meaning in any language it edits.
+ *
+ * This forgives blank lines and **nothing else**: every non-blank line must still match exactly once
+ * trimmed, in order, with none skipped. It runs only after the other three have failed, so it cannot
+ * loosen a match they would have made. What it costs is that a block distinguished from a
+ * neighbouring one *purely* by its blank lines could match the wrong one — which requires two
+ * identical runs of code differing only in spacing, and is a far smaller risk than a repair tool
+ * that cannot be relied on.
+ */
+function blankLineInsensitiveMatch(originalContent: string, searchContent: string, startIndex: number): [number, number] | false {
+	const originalLines = originalContent.split("\n")
+	const searchLines = searchContent.split("\n")
+	if (searchLines.length > 0 && searchLines[searchLines.length - 1] === "") {
+		searchLines.pop()
+	}
+
+	const wanted = searchLines.map((line) => line.trim()).filter((line) => line.length > 0)
+	if (wanted.length === 0) {
+		return false
+	}
+
+	// Where startIndex falls, so an earlier block's match is not re-used.
+	let startLineNum = 0
+	let currentIndex = 0
+	while (currentIndex < startIndex && startLineNum < originalLines.length) {
+		currentIndex += originalLines[startLineNum].length + 1
+		startLineNum++
+	}
+
+	for (let i = startLineNum; i < originalLines.length; i++) {
+		if (originalLines[i].trim() !== wanted[0]) {
+			continue
+		}
+		// Walk forward consuming blank lines freely and non-blank lines only when they match.
+		let matched = 1
+		let cursor = i + 1
+		while (cursor < originalLines.length && matched < wanted.length) {
+			const line = originalLines[cursor].trim()
+			if (line.length === 0) {
+				cursor++
+				continue
+			}
+			if (line !== wanted[matched]) {
+				break
+			}
+			matched++
+			cursor++
+		}
+		if (matched !== wanted.length) {
+			continue
+		}
+
+		let matchStartIndex = 0
+		for (let k = 0; k < i; k++) {
+			matchStartIndex += originalLines[k].length + 1
+		}
+		let matchEndIndex = matchStartIndex
+		for (let k = i; k < cursor; k++) {
+			matchEndIndex += originalLines[k].length + 1
+		}
+		return [matchStartIndex, matchEndIndex]
+	}
+
+	return false
+}
+
 function blockAnchorFallbackMatch(originalContent: string, searchContent: string, startIndex: number): [number, number] | false {
 	const originalLines = originalContent.split("\n")
 	const searchLines = searchContent.split("\n")
@@ -345,6 +438,13 @@ async function constructNewFileContentV1(diffContent: string, originalContent: s
 						const blockMatch = blockAnchorFallbackMatch(originalContent, currentSearchContent, lastProcessedIndex)
 						if (blockMatch) {
 							;[searchMatchIndex, searchEndIndex] = blockMatch
+						} else if (blankLineInsensitiveMatch(originalContent, currentSearchContent, lastProcessedIndex)) {
+							// Blank lines dropped from an otherwise exact block — see the function's note.
+							;[searchMatchIndex, searchEndIndex] = blankLineInsensitiveMatch(
+								originalContent,
+								currentSearchContent,
+								lastProcessedIndex,
+							) as [number, number]
 						} else {
 							// Last resort: search the entire file from the beginning
 							const fullFileIndex = originalContent.indexOf(currentSearchContent, 0)
@@ -687,6 +787,15 @@ class NewFileContentConstructor {
 					)
 					if (blockMatch) {
 						;[this.searchMatchIndex, this.searchEndIndex] = blockMatch
+					} else if (
+						blankLineInsensitiveMatch(this.originalContent, this.currentSearchContent, this.lastProcessedIndex)
+					) {
+						// Blank lines dropped from an otherwise exact block — see the function's note.
+						;[this.searchMatchIndex, this.searchEndIndex] = blankLineInsensitiveMatch(
+							this.originalContent,
+							this.currentSearchContent,
+							this.lastProcessedIndex,
+						) as [number, number]
 					} else {
 						throw new Error(
 							`The SEARCH block:\n${this.currentSearchContent.trimEnd()}\n...does not match anything in the file.`,

@@ -1,6 +1,7 @@
 import axios from "axios"
 import { aeriocodeEnvConfig } from "@/config"
 import { AuthService } from "@/services/auth/AuthService"
+import { type ComplianceAuditContext, recordComplianceAutofix, recordComplianceCheck } from "./ComplianceAudit"
 
 /**
  * Client for the Aeriocode backend compliance API.
@@ -25,8 +26,13 @@ export interface ComplianceFinding {
 	confidence: "high" | "medium" | "low"
 	fixable: "safe" | "review" | null
 	rule: {
-		statement: string | null
+		/** Aerio's own description of the requirement, never the standard's wording. */
+		summary: string | null
+		/** Whether that description was checked against the published standard. */
+		verification?: "verified-against-source" | "pending-source-verification" | null
 		rationale: string | null
+		/** What to write, as opposed to what is wrong. Null for rules with no authoring form. */
+		authoringAction?: string | null
 		exception: string | null
 		section: string | null
 	}
@@ -50,6 +56,14 @@ export interface ComplianceSummary {
 	coverage: {
 		rulesInStandard: number
 		rulesAutomated: number
+		/**
+		 * A subset of `rulesAutomated`: rules with a check that also declare an analysis limit the
+		 * check does not reach. Optional because a backend older than this extension does not send
+		 * it — and the reason it must be surfaced when it is present is that its absence made a
+		 * partially checked rule read as a fully checked one everywhere this number is quoted.
+		 */
+		rulesPartiallyAutomated?: number
+		partiallyAutomatedRuleIds?: string[]
 		rulesManualReview: number
 		rulesAbsentFromSource: number
 		absentRuleIds: string[]
@@ -58,10 +72,26 @@ export interface ComplianceSummary {
 	scoreDefinition: string
 }
 
+/**
+ * Identifies the analysis behind a result: which engine, which rule set. Carried into the
+ * audit trail so a finding can be reproduced or explained later.
+ *
+ * Optional because a backend older than this extension will not send it; the audit
+ * recorder skips a result that arrives without provenance rather than inventing one.
+ */
+export interface ComplianceProvenance {
+	engineVersion: string
+	engineFingerprint: string
+	standard: string
+	standardVersion: string
+	catalogHash: string
+}
+
 export interface AnalyzeResult {
 	standard: string
 	standardName: string
 	standardVersion: string
+	provenance?: ComplianceProvenance
 	findings: ComplianceFinding[]
 	skipped: Array<{ path: string; reason: string }>
 	parseErrors: Array<{ path: string; reason: string }>
@@ -80,6 +110,7 @@ export interface AutofixFileResult {
 export interface AutofixResult {
 	standard: string
 	standardName: string
+	provenance?: ComplianceProvenance
 	tier: string
 	files: AutofixFileResult[]
 	summary: {
@@ -96,7 +127,16 @@ export interface StandardDescriptor {
 	title: string
 	version: string
 	languages: string[]
-	rules: { total: number; automated: number; manualReview: number; absentFromSource: number }
+	rules: {
+		total: number
+		automated: number
+		/** A subset of `automated`; absent from a backend older than this extension. */
+		partiallyAutomated?: number
+		manualReview: number
+		absentFromSource: number
+	}
+	/** What each unchecked rule waits on. Absent from a backend older than this extension. */
+	gaps?: { awaitingCheck: number; awaitingAnalysis: number; permanent: number }
 	autofix: { safe: number; review: number }
 }
 
@@ -255,14 +295,24 @@ export class ComplianceClient {
 		}
 	}
 
-	async analyze(standard: string, files: ComplianceFile[]): Promise<AnalyzeResult> {
+	/**
+	 * `audit` says how the run was started. Recording happens here rather than at the call
+	 * sites because every path into compliance converges on this method, so a new caller
+	 * cannot produce an unrecorded run by forgetting a step. A run with no context still
+	 * gets recorded, attributed to the command surface.
+	 */
+	async analyze(standard: string, files: ComplianceFile[], audit?: ComplianceAuditContext): Promise<AnalyzeResult> {
+		let result: AnalyzeResult
 		try {
 			const token = await this.requireToken()
 			const payload = await this.transport.post<unknown>(`${this.baseUrl}/${standard}/analyze`, { files }, token)
-			return ComplianceClient.unwrap<AnalyzeResult>(payload)
+			result = ComplianceClient.unwrap<AnalyzeResult>(payload)
 		} catch (error) {
 			return ComplianceClient.describeFailure(error)
 		}
+
+		await recordComplianceCheck(result, files, audit ?? { trigger: "command" })
+		return result
 	}
 
 	async autofix(
@@ -270,7 +320,9 @@ export class ComplianceClient {
 		files: ComplianceFile[],
 		tier: "safe" | "review" = "safe",
 		ruleIds?: string[],
+		audit?: ComplianceAuditContext,
 	): Promise<AutofixResult> {
+		let result: AutofixResult
 		try {
 			const token = await this.requireToken()
 			const payload = await this.transport.post<unknown>(
@@ -278,9 +330,12 @@ export class ComplianceClient {
 				{ files, tier, ruleIds: ruleIds ?? null },
 				token,
 			)
-			return ComplianceClient.unwrap<AutofixResult>(payload)
+			result = ComplianceClient.unwrap<AutofixResult>(payload)
 		} catch (error) {
 			return ComplianceClient.describeFailure(error)
 		}
+
+		await recordComplianceAutofix(result, files, audit ?? { trigger: "command" })
+		return result
 	}
 }

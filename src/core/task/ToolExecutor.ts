@@ -63,12 +63,53 @@ import { TaskState } from "./TaskState"
 import { MessageStateHandler } from "./message-state"
 import { AutoApprove } from "./tools/autoApprove"
 import { executeComplianceCheck } from "./tools/executeComplianceCheck"
+import { RepairLedger, runComplianceGate, type ComplianceProfile } from "./tools/complianceGate"
+import { resolveComplianceProfile } from "@/services/compliance/ComplianceProfileResolver"
 import { showNotificationForApprovalIfAutoApprovalEnabled } from "./utils"
 import { Mode } from "@shared/storage/types"
 import { getExtensionId } from "../../config/extensionConfig"
 
 export class ToolExecutor {
 	private autoApprover: AutoApprove
+
+	/**
+	 * Repair attempts per file for the compliance gate, scoped to this task.
+	 *
+	 * On the executor rather than module-level state so two concurrent tasks cannot exhaust each
+	 * other's budget, and so it disappears with the task rather than growing for the session.
+	 */
+	private complianceRepairLedger = new RepairLedger()
+
+	/**
+	 * The project's safety profile, or null outside a safety-critical session.
+	 *
+	 * Resolved from workspace settings rather than from the model id: the standard in force is a
+	 * property of the code, and encoding it in a model name is what made a developer with two repos
+	 * open have to remember which model they had selected.
+	 *
+	 * Read per call rather than captured at construction, because a developer turning the standard
+	 * on partway through a task expects the next write to be checked. A captured profile would keep
+	 * checking against a standard the user had already switched away from.
+	 *
+	 * `relPath` scopes the lookup, which matters in a multi-root workspace where certified software
+	 * and its build tooling live in one repository under different folder settings.
+	 */
+	private getComplianceProfile(relPath?: string): ComplianceProfile | null {
+		const resource = vscode.Uri.file(relPath ? path.resolve(this.cwd, relPath) : this.cwd)
+
+		// An explicit opt-out leaves the prompt telling the model to follow the standard with
+		// nothing checking that it did. Honoured because a team may have a reason, and reported in
+		// the audit record either way so the gap is visible rather than assumed.
+		if (!vscode.workspace.getConfiguration("aeriocode.compliance", resource).get<boolean>("gateEnabled", true)) {
+			return null
+		}
+
+		const profile = resolveComplianceProfile(resource)
+		if (!profile) {
+			return null
+		}
+		return { standard: profile.standard, level: profile.level, regime: profile.regime }
+	}
 
 	// Auto-approval methods using the AutoApprove class
 	private shouldAutoApproveTool(toolName: ToolUseName): boolean | [boolean, boolean] {
@@ -785,6 +826,36 @@ export class ToolExecutor {
 						// Track file edit operation
 						await this.fileContextTracker.trackFileContext(relPath, "aeriocode_edited")
 
+						// Check what was just written, before the model moves on. A prompt lowers the
+						// rate of violations; only running the analysis turns "probably conforms"
+						// into something anybody can act on. Runs after the save rather than instead
+						// of it — see tools/complianceGate.ts for why blocking the write is worse.
+						const gate = await runComplianceGate(
+							relPath,
+							finalContent ?? newContent ?? "",
+							this.complianceRepairLedger,
+							{
+								getProfile: () => this.getComplianceProfile(relPath),
+								analyze: (standard, files) =>
+									ComplianceClient.getInstance().analyze(standard, files, {
+										trigger: "gate",
+										taskId: this.taskId,
+									}),
+								// The audit trail is what makes this evidence rather than a convenience:
+								// it records that AI-authored code was checked and what came back.
+								recordGateResult: (result) => {
+									telemetryService.captureToolUsage(
+										this.taskId,
+										"compliance_gate",
+										this.api.getModel().id,
+										true,
+										result.ran,
+									)
+								},
+								warn: (message) => console.warn(`[Aeriocode] ${message}`),
+							},
+						)
+
 						if (userEdits) {
 							// Track file edit operation
 							await this.fileContextTracker.trackFileContext(relPath, "user_edited")
@@ -804,7 +875,7 @@ export class ToolExecutor {
 									autoFormattingEdits,
 									finalContent,
 									newProblemsMessage,
-								),
+								) + gate.feedback,
 								block,
 							)
 						} else {
@@ -814,7 +885,7 @@ export class ToolExecutor {
 									autoFormattingEdits,
 									finalContent,
 									newProblemsMessage,
-								),
+								) + gate.feedback,
 								block,
 							)
 						}
@@ -2208,9 +2279,18 @@ export class ToolExecutor {
 					getReadablePath,
 					fileExists: fileExistsAtPath,
 					readFile: extractTextFromFile,
-					analyze: (standard, files) => ComplianceClient.getInstance().analyze(standard, files),
+					// The task id ties the audit record back to the conversation that caused
+					// the run, which is what makes an AI-initiated check traceable.
+					analyze: (standard, files) =>
+						ComplianceClient.getInstance().analyze(standard, files, {
+							trigger: "tool",
+							taskId: this.taskId,
+						}),
 					autofix: (standard, files, tier, ruleIds) =>
-						ComplianceClient.getInstance().autofix(standard, files, tier, ruleIds),
+						ComplianceClient.getInstance().autofix(standard, files, tier, ruleIds, {
+							trigger: "tool",
+							taskId: this.taskId,
+						}),
 				})
 				break
 			}

@@ -40,9 +40,9 @@ function toDiagnostic(finding: ComplianceFinding): vscode.Diagnostic {
 	const diagnostic = new vscode.Diagnostic(range, `${finding.message}${qualifier}`, severityOf(finding))
 
 	diagnostic.source = DIAGNOSTIC_SOURCE
-	diagnostic.code = `AV ${finding.ruleId}`
+	diagnostic.code = finding.ruleId
 
-	if (finding.rule.statement) {
+	if (finding.rule.summary) {
 		diagnostic.relatedInformation = []
 	}
 
@@ -141,7 +141,12 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 							.showQuickPick(
 								standards.map((standard) => ({
 									label: standard.name,
-									description: `${standard.languages.join("/")} — ${standard.rules.automated} of ${definedRuleCount(standard.rules.automated, standard.rules.manualReview)} rules checked automatically`,
+									description:
+										`${standard.languages.join("/")} — ${standard.rules.automated} of ` +
+										`${definedRuleCount(standard.rules.automated, standard.rules.manualReview)} rules checked automatically` +
+										(standard.rules.partiallyAutomated
+											? ` (${standard.rules.partiallyAutomated} in part)`
+											: ""),
 									detail: standard.title,
 									standard,
 								})),
@@ -158,7 +163,10 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 
 			const result = await vscode.window.withProgress(
 				{ location: vscode.ProgressLocation.Window, title: `Checking ${picked.name} compliance…` },
-				() => this.client.analyze(picked.id, [{ path: relativePath, content: document.getText() }]),
+				() =>
+					this.client.analyze(picked.id, [{ path: relativePath, content: document.getText() }], {
+						trigger: "diagnostics",
+					}),
 			)
 
 			this.publish(document.uri, result)

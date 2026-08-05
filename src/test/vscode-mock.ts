@@ -66,11 +66,46 @@ export const window = {
 	setStatusBarMessage: () => ({ dispose: () => {} }),
 }
 
+/**
+ * Settings a test has set, keyed by full section path (e.g. "aeriocode.compliance.standard").
+ *
+ * Exposed so a suite can exercise code that reads configuration. The previous double returned
+ * `undefined` for every key, which meant any such code could only ever be tested on its
+ * nothing-is-set path — and for a feature whose entire job is to be off by default, that is the one
+ * path that proves least.
+ */
+export const __configStore = new Map<string, unknown>()
+
+/**
+ * Declared defaults, read from the real package.json.
+ *
+ * Not a hand-written copy: a test asserting the resolver's behaviour is only meaningful if the
+ * default it sees is the default the extension actually ships. A second list would let the two
+ * drift, and the drift would make the tests pass while the product misbehaved.
+ */
+function declaredDefault(fullKey: string): unknown {
+	const properties = require("../../package.json").contributes?.configuration?.properties ?? {}
+	return properties[fullKey]?.default
+}
+
+export function __resetConfig(): void {
+	__configStore.clear()
+}
+
 export const workspace = {
-	getConfiguration: () => ({
-		get: () => undefined,
-		has: () => false,
-		update: async () => {},
+	getConfiguration: (section?: string, _resource?: unknown) => ({
+		get: (key: string, fallback?: unknown) => {
+			const fullKey = section ? `${section}.${key}` : key
+			if (__configStore.has(fullKey)) {
+				return __configStore.get(fullKey)
+			}
+			const declared = declaredDefault(fullKey)
+			return declared !== undefined ? declared : fallback
+		},
+		has: (key: string) => __configStore.has(section ? `${section}.${key}` : key),
+		update: async (key: string, value: unknown) => {
+			__configStore.set(section ? `${section}.${key}` : key, value)
+		},
 		inspect: () => undefined,
 	}),
 	getWorkspaceFolders: () => [],

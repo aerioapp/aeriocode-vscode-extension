@@ -1,3 +1,21 @@
+/* eslint-disable eslint-rules/no-direct-vscode-api -- the host bridge cannot serve this call site.
+ *
+ * ⚠️ An earlier version of this banner claimed this controller was "registered on the VS Code
+ * protobus only". **That was false**, and the check behind it was bad: it grepped
+ * `src/generated/hosts/vscode/` and stopped. This handler is registered on **both** hosts —
+ * `src/generated/hosts/standalone/protobus-server-setup.ts` registers it too.
+ *
+ * The direct `vscode` use is still intended, for a reason that survives that correction. A
+ * folder-scoped `getConfiguration` needs the workspace folder's own `Uri`;
+ * `HostProvider.workspace.getWorkspacePaths` returns `fsPath` **strings**, and rebuilding a `Uri`
+ * from one with `Uri.file()` would force the `file:` scheme and break remote and virtual
+ * workspaces. There is no bridge call that returns what this needs.
+ *
+ * Under the standalone host this degrades rather than throwing, which was checked in the built
+ * shim rather than assumed: `vscode.workspace.getConfiguration` is implemented there against an
+ * in-memory store, and `vscode.workspace.workspaceFolders` is absent — which the optional chaining
+ * below already handles, reporting `canPersist: false`.
+ */
 import * as vscode from "vscode"
 import { Controller } from ".."
 import { EmptyRequest } from "../../../shared/proto/aeriocode/common"

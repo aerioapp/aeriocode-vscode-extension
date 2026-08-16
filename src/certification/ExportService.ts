@@ -102,7 +102,9 @@ export class ExportService {
 			openLabel: "Export Here",
 		})
 
-		if (!folderPath || folderPath.length === 0) throw new Error("Export cancelled")
+		if (!folderPath || folderPath.length === 0) {
+			throw new Error("Export cancelled")
+		}
 
 		const dir = folderPath[0].fsPath
 
@@ -166,7 +168,9 @@ export class ExportService {
 					: { "CSV files": ["csv"], "All files": ["*"] },
 		})
 
-		if (!uri) throw new Error("Export cancelled")
+		if (!uri) {
+			throw new Error("Export cancelled")
+		}
 		return uri.fsPath
 	}
 

@@ -9,7 +9,9 @@ export async function exportVerificationPackage(_controller: Controller, _reques
 		const certManager = CertificationManager.getInstance()
 		const db = certManager.getProjectDb()
 		const auditService = certManager.getAuditService()
-		if (!db || !auditService) throw new Error("Certification not active")
+		if (!db || !auditService) {
+			throw new Error("Certification not active")
+		}
 		const exportService = new ExportService(db, auditService)
 		const dirPath = await exportService.exportVerificationPackage()
 		return ExportResponse.create({ filePath: dirPath, success: true, error: "" })

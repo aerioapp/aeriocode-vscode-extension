@@ -105,7 +105,9 @@ export class BannerService {
 	public static async onAuthUpdate(userId: string | null): Promise<void> {
 		const instance = BannerService.instance
 
-		if (!instance || instance.userId === userId) return
+		if (!instance || instance.userId === userId) {
+			return
+		}
 
 		if (instance.debounceTimer) {
 			clearTimeout(instance.debounceTimer)
@@ -206,7 +208,9 @@ export class BannerService {
 	private getCacheDurationMs(): number {
 		const flagPayload = featureFlagsService.getFlagPayload(FEATURE_FLAGS.EXTENSION_REMOTE_BANNERS_TTL)
 		const ms = typeof flagPayload === "number" && Number.isFinite(flagPayload) ? flagPayload : DEFAULT_CACHE_DURATION_MS
-		if (!Number.isFinite(ms) || ms <= 0) return DEFAULT_CACHE_DURATION_MS
+		if (!Number.isFinite(ms) || ms <= 0) {
+			return DEFAULT_CACHE_DURATION_MS
+		}
 		return ms
 	}
 
@@ -224,7 +228,9 @@ export class BannerService {
 	public async dismissBanner(bannerId: string): Promise<void> {
 		try {
 			const dismissed = (this.cacheService.getGlobalStateKey("dismissedBanners") as DismissedBanner[]) || []
-			if (dismissed.some((b) => b.bannerId === bannerId)) return
+			if (dismissed.some((b) => b.bannerId === bannerId)) {
+				return
+			}
 
 			this.cacheService.setGlobalState("dismissedBanners", [...dismissed, { bannerId, dismissedAt: Date.now() }])
 
@@ -417,7 +423,9 @@ export class BannerService {
 	private matchesProviderRule(banner: Banner): boolean {
 		try {
 			const rules: BannerRules = JSON.parse(banner.rulesJson || "{}")
-			if (!rules?.providers?.length) return true
+			if (!rules?.providers?.length) {
+				return true
+			}
 
 			return rules.providers.some((ruleProvider: string) => {
 				for (const [, aliases] of Object.entries(PROVIDER_ALIASES)) {

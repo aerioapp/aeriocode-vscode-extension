@@ -5,7 +5,9 @@ import { CertificationManager } from "@/certification"
 export async function getAuditEntries(_controller: Controller, request: AuditQueryRequest): Promise<AuditEntriesResponse> {
 	const certManager = CertificationManager.getInstance()
 	const auditService = certManager.getAuditService()
-	if (!auditService) return AuditEntriesResponse.create({ entries: [], totalCount: 0 })
+	if (!auditService) {
+		return AuditEntriesResponse.create({ entries: [], totalCount: 0 })
+	}
 	const entries = auditService.queryEvents({
 		event_type: request.eventType || undefined,
 		user_id: request.userId || undefined,

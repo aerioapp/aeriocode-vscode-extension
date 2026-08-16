@@ -47,8 +47,15 @@ service CertificationService {
 
 message CertificationStatusResponse {
   bool active = 1;
+  // ⚠️ The document's identifier — `ECSS-E-ST-40C`, `NPR-7150.2D` — not the publisher's name. This
+  // carried `ECSS` and `NASA`, which are standards bodies with many publications, so the panel could
+  // only tell a supplier which organisation their project answered to and not which document.
   string profile_standard = 2;
   string profile_level = 3;
+  // The issue of profile_standard (`Rev.1`, `D`) and what it is called, so a panel can name the
+  // document rather than only identify it.
+  string profile_version = 10;
+  string profile_title = 11;
   int32 traced_count = 4;
   // Requirements carrying at least one traceability link, as a percentage of all
   // requirements. This is NOT structural coverage — see CoverageEnforcement.
@@ -102,14 +109,44 @@ message CertificationProfile {
   string standard = 1;
   string version = 2;
   string publisher = 3;
+  // What the standard is called, so a picker can offer "ECSS-E-ST-40C Rev.1 — Space engineering:
+  // Software general requirements" rather than an identifier a reader has to already know.
+  string title = 8;
+  // Every published document this profile is built from. ⚠️ No regime here is one document: ECSS
+  // takes its criticality categories from ECSS-Q-ST-80C rather than from ECSS-E-ST-40C, and NASA
+  // splits engineering requirements, assurance and document content across three. Naming only the
+  // headline document would credit it with obligations it does not contain.
+  repeated SourceDocument based_on = 9;
   repeated CertificationLevel levels = 4;
+  // The coding-standard regime this profile serves, matching the ids the compliance picker uses.
+  // Carried so the certification screen and the coding-standard picker cannot disagree about which
+  // scale a level letter belongs to — the defect that had an ECSS session displaying as "DAL B".
+  string regime = 5;
+  // Where this regime defines its levels. A citation, never reproduced text.
+  string level_basis = 6;
+  // What Aerio does NOT produce for this profile. The Annex A objective tables and the eleven
+  // document drafts are DO-178C artifacts; a programme on another regime has to meet that on the
+  // selection screen rather than discover it from an empty view.
+  repeated string unsupported_artifacts = 7;
+}
+
+// One published document a profile draws on, and what it is drawn on for.
+message SourceDocument {
+  string id = 1;
+  string revision = 2;
+  string title = 3;
+  // What this profile takes from it, so a reader can tell which document answers what.
+  string role = 4;
 }
 
 message CertificationLevel {
   string id = 1;
   string label = 2;
+  // Kept short: a dropdown renders this inline beside the label.
   string failure_condition = 3;
   string coverage_metric = 4;
+  // The longer explanation, shown as description rather than inline.
+  string assigned_from = 5;
 }
 
 // --- Requirement Messages ---
@@ -162,6 +199,24 @@ message RequirementResponse {
 
 message TraceabilityMatrixResponse {
   repeated TraceabilityMatrixRow rows = 1;
+  TraceabilityDirectionSummary summary = 2;
+}
+
+// DO-178C 11.21 requires *bi-directional* associations, and the two directions answer different
+// questions: requirement -> code asks whether everything required was built, code -> requirement
+// asks whether everything built was required. Reported separately because a programme can be
+// complete in one and empty in the other, and one number hides that.
+message TraceabilityDirectionSummary {
+  int32 requirements = 1;
+  // Requirement -> code. Table A-4 objective 6 and Table A-5 objective 5.
+  int32 implemented = 2;
+  repeated string unimplemented_requirement_ids = 3;
+  // Requirement -> test.
+  int32 verified = 4;
+  repeated string unverified_requirement_ids = 5;
+  // Code -> requirement. A tag naming a requirement that is not in the baseline.
+  repeated string orphaned_tag_requirement_ids = 6;
+  string statement = 7;
 }
 
 message TraceabilityMatrixRow {
@@ -173,7 +228,14 @@ message TraceabilityMatrixRow {
   repeated string linked_source_files = 6;
   repeated string linked_test_files = 7;
   repeated string linked_documents = 8;
-  int32 coverage_percent = 9;
+  // ⚠️ Field 9 was `int32 coverage_percent`, removed rather than repurposed. It reported 100 for
+  // any requirement carrying a link of any kind — including a document link and no code at all —
+  // so a requirement nobody had implemented read as fully covered. There is no percentage that
+  // means anything here: a requirement is implemented or it is not.
+  reserved 9;
+  reserved "coverage_percent";
+  bool implemented = 10;
+  bool verified = 11;
 }
 
 message TraceabilityLinksResponse {

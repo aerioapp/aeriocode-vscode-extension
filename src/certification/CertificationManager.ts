@@ -10,7 +10,9 @@ import { HumanDecisionCapture } from "./HumanDecisionCapture"
 import { TraceabilityChecker } from "./TraceabilityChecker"
 import { RequirementTagParser } from "./RequirementTagParser"
 import { calculateEnforcement } from "./coverageEnforcement"
+import { summariseTraceability } from "./traceabilityStatus"
 import { EvidenceSync } from "@/services/evidence/EvidenceSync"
+import { resolveComplianceProfile } from "@/services/compliance/ComplianceProfileResolver"
 import type {
 	CertificationProfile,
 	CertificationStatus,
@@ -73,14 +75,20 @@ export class CertificationManager implements vscode.Disposable {
 	 * its certification profile has not also got to declare it in a setting; two places to say one
 	 * thing is two places to disagree.
 	 */
-	static peekActiveProfile(): { standard: string; level: string } | null {
+	static peekActiveProfile(): { standard: string; level: string; regime?: string } | null {
 		const instance = CertificationManager.instance
 		if (!instance) {
 			return null
 		}
-		const standard = instance.getActiveProfile()?.standard
+		const profile = instance.getActiveProfile()
+		const standard = profile?.standard
 		const level = instance.getActiveProfileLevel()
-		return standard && level ? { standard, level } : null
+		// ⚠️ `regime` is carried out rather than left to be inferred. `ComplianceProfileResolver` used
+		// to guess it by pattern-matching the standard name — `/ECSS|E-ST-40|Q-ST-80/`, then a
+		// DO-178C fallback — which is a guess that gets the answer wrong the first time a profile is
+		// named something the pattern did not anticipate, and gets it wrong *silently*, by labelling
+		// a space programme's level a DAL. The profile knows which regime it belongs to; it says so.
+		return standard && level ? { standard, level, regime: profile?.regime } : null
 	}
 
 	/**
@@ -179,8 +187,18 @@ export class CertificationManager implements vscode.Disposable {
 			return
 		}
 
-		// Try to load effective profile
-		const profile = ProfileLoader.getEffectiveProfile(workspacePath)
+		// Try to load effective profile, for the regime this workspace is configured for. Read from
+		// settings rather than held, so turning the regime over mid-session takes effect on the next
+		// workspace change rather than requiring a reload.
+		//
+		// ⚠️ Scoped to this folder. Called bare, `resolveComplianceProfile()` returns the
+		// workspace-level answer, so in a multi-root workspace — the case `ComplianceProfileResolver`
+		// documents as the reason the parameter exists, a repository holding certified software beside
+		// its build tooling — a folder configured for ECSS would have loaded the airborne profile.
+		const profile = ProfileLoader.getEffectiveProfile(
+			workspacePath,
+			resolveComplianceProfile(vscode.Uri.file(workspacePath))?.regime,
+		)
 		if (profile) {
 			this.activeProfile = profile
 			this.auditService = new AuditTrailService(this.projectDb)
@@ -366,7 +384,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * No-op when inactive.
 	 */
 	async onFileSaved(filePath: string, content: string): Promise<void> {
-		if (!this.isActive) return
+		if (!this.isActive) {
+			return
+		}
 		// TraceabilityChecker handles this via its own file watcher
 	}
 
@@ -375,7 +395,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * Returns null when inactive.
 	 */
 	async onAIGenerationStarted(params: GenerationStartParams): Promise<string | null> {
-		if (!this.isActive || !this.projectDb || !this.auditService) return null
+		if (!this.isActive || !this.projectDb || !this.auditService) {
+			return null
+		}
 
 		const generationId = params.generation_id
 		const now = new Date().toISOString()
@@ -448,7 +470,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * No-op when inactive.
 	 */
 	async onAIGenerationCompleted(generationId: string, filesWritten?: string[]): Promise<void> {
-		if (!this.isActive || !this.projectDb || !this.auditService) return
+		if (!this.isActive || !this.projectDb || !this.auditService) {
+			return
+		}
 
 		try {
 			const now = new Date().toISOString()
@@ -500,7 +524,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * No-op when inactive.
 	 */
 	async onHumanDecision(params: DecisionParams): Promise<void> {
-		if (!this.isActive || !this.projectDb || !this.decisionCapture) return
+		if (!this.isActive || !this.projectDb || !this.decisionCapture) {
+			return
+		}
 
 		try {
 			const now = new Date().toISOString()
@@ -559,7 +585,9 @@ export class CertificationManager implements vscode.Disposable {
 		fixes_applied: number
 		applied_rule_ids: string[]
 	}): Promise<void> {
-		if (!this.isActive) return
+		if (!this.isActive) {
+			return
+		}
 
 		await this.onHumanDecision({
 			user_id: params.user_id,
@@ -589,7 +617,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * No-op when inactive.
 	 */
 	async onComplianceCheck(params: ComplianceCheckParams): Promise<void> {
-		if (!this.isActive || !this.projectDb || !this.auditService) return
+		if (!this.isActive || !this.projectDb || !this.auditService) {
+			return
+		}
 
 		try {
 			const now = new Date().toISOString()
@@ -657,7 +687,9 @@ export class CertificationManager implements vscode.Disposable {
 	 * No-op when inactive.
 	 */
 	async onComplianceAutofix(params: ComplianceAutofixParams): Promise<void> {
-		if (!this.isActive || !this.projectDb || !this.auditService) return
+		if (!this.isActive || !this.projectDb || !this.auditService) {
+			return
+		}
 
 		try {
 			const now = new Date().toISOString()
@@ -747,6 +779,17 @@ export class CertificationManager implements vscode.Disposable {
 		return this.evidenceSync ? this.evidenceSync.status() : null
 	}
 
+	/**
+	 * The project key a compliance run sends so the backend applies this project's deviations.
+	 *
+	 * Null when certification is off or the evidence layer has not started, and the backend then
+	 * applies no deviations — the stricter answer, which is the right default for a session that has
+	 * no project to have raised any against.
+	 */
+	complianceProjectKey(): string | null {
+		return this.evidenceSync ? this.evidenceSync.getProjectKey() : null
+	}
+
 	// --- Status & Queries ---
 
 	getStatus(): CertificationStatus {
@@ -764,13 +807,22 @@ export class CertificationManager implements vscode.Disposable {
 			}
 		}
 
-		const linkCounts = this.projectDb.getLinkCounts()
 		const lastEntry = this.projectDb.getLastAuditEntry()
-		const totalReqs = this.projectDb.getAllRequirements().length
 
-		// Traceability coverage: requirements carrying at least one link. This says nothing
-		// about how much code the tests exercised — see the enforcement block below.
-		const traceabilityCoverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+		// ⚠️ Requirements with implementing code, over requirements. This read
+		// `getLinkCounts().traced / totalReqs`, and `getLinkCounts` returns
+		// `COUNT(DISTINCT artifact_path)` — a count of **files**. The numerator and the denominator
+		// counted different things, so one requirement linked to five files reported 500% traced and
+		// the number below went on to `calculateEnforcement`, whose pass condition is `>= 100`. The
+		// traceability objective was reported met on a programme with one requirement.
+		//
+		// `summariseTraceability` is the one place this is computed; the matrix and the checker read
+		// the same function rather than a second copy of the arithmetic.
+		const trace = summariseTraceability(this.projectDb.getAllRequirements(), this.projectDb.getAllLinks())
+		const totalReqs = trace.requirements
+
+		// Says nothing about how much code the tests exercised — see the enforcement block below.
+		const traceabilityCoverage = totalReqs > 0 ? Math.round((trace.implemented / totalReqs) * 100) : 0
 
 		// Check last integrity verification result
 		let integrityStatus: "valid" | "invalid" | "unchecked" = "unchecked"
@@ -790,15 +842,15 @@ export class CertificationManager implements vscode.Disposable {
 		// exercise the same code this does rather than a copy of it.
 		const enforcement: CertificationStatus["enforcement"] =
 			this.activeProfile && this.activeProfileLevel
-				? calculateEnforcement(this.activeProfile, this.activeProfileLevel, totalReqs, linkCounts.traced)
+				? calculateEnforcement(this.activeProfile, this.activeProfileLevel, totalReqs, trace.implemented)
 				: null
 
 		return {
 			active: true,
 			profile: this.activeProfile,
 			profile_level: this.activeProfileLevel,
-			traced_count: linkCounts.traced,
-			untraced_count: Math.max(0, totalReqs - linkCounts.traced),
+			traced_count: trace.implemented,
+			untraced_count: trace.unimplementedRequirementIds.length,
 			traceability_coverage_percent: traceabilityCoverage,
 			last_audit_entry: lastEntry?.timestamp || null,
 			integrity_status: integrityStatus,
@@ -905,7 +957,9 @@ export class CertificationManager implements vscode.Disposable {
 	}
 
 	private getActiveProfileId(): number | undefined {
-		if (!this.projectDb) return undefined
+		if (!this.projectDb) {
+			return undefined
+		}
 		const raw = this.projectDb.getRawDatabase()
 		const row = raw.prepare("SELECT id FROM certification_profile WHERE is_active = 1 LIMIT 1").get() as
 			{ id: number } | undefined
@@ -922,7 +976,9 @@ export class CertificationManager implements vscode.Disposable {
 		// Watch for file saves in the workspace
 		this.fileWatcher = vscode.workspace.createFileSystemWatcher("**/*")
 		this.fileWatcher.onDidChange(async (uri) => {
-			if (!this.isActive) return
+			if (!this.isActive) {
+				return
+			}
 
 			// Only check source files (not .aeriocode/, not config files, not binaries)
 			const filePath = uri.fsPath
@@ -940,17 +996,23 @@ export class CertificationManager implements vscode.Disposable {
 
 	private shouldCheckFile(filePath: string): boolean {
 		// Skip .aeriocode/ directory
-		if (filePath.includes(".aeriocode")) return false
+		if (filePath.includes(".aeriocode")) {
+			return false
+		}
 
 		// Skip common non-source files
 		const skipExtensions = [".json", ".md", ".txt", ".xml", ".yaml", ".yml", ".toml", ".lock", ".db", ".db-wal", ".db-shm"]
 		const ext = path.extname(filePath).toLowerCase()
-		if (skipExtensions.includes(ext)) return false
+		if (skipExtensions.includes(ext)) {
+			return false
+		}
 
 		// Skip common non-source directories
 		const skipDirs = ["node_modules", ".git", "dist", "build", ".vscode", "__pycache__"]
 		for (const dir of skipDirs) {
-			if (filePath.includes(`/${dir}/`) || filePath.includes(`\\${dir}\\`)) return false
+			if (filePath.includes(`/${dir}/`) || filePath.includes(`\\${dir}\\`)) {
+				return false
+			}
 		}
 
 		return true

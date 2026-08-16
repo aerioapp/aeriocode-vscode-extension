@@ -4,6 +4,7 @@
 import { DIFF_VIEW_URI_SCHEME } from "@hosts/vscode/VscodeDiffViewProvider"
 import { WebviewProviderType as WebviewProviderTypeEnum } from "@shared/proto/aeriocode/ui"
 import assert from "node:assert"
+import dns from "node:dns"
 import { setTimeout as setTimeoutPromise } from "node:timers/promises"
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
@@ -37,9 +38,11 @@ import { telemetryService } from "./services/telemetry"
 import { SharedUriHandler } from "./services/uri/SharedUriHandler"
 import { ShowMessageType } from "./shared/proto/host/window"
 import { CertificationManager } from "./certification"
-import { setComplianceAuditSink } from "./services/compliance/ComplianceAudit"
+import { setComplianceAuditSink, setComplianceProjectKeyResolver } from "./services/compliance/ComplianceAudit"
 import { ComplianceStatusBar } from "@/services/compliance/ComplianceStatusBar"
+import type { ComplianceFinding } from "./services/compliance/ComplianceClient"
 import { ComplianceDiagnostics } from "./services/compliance/ComplianceDiagnostics"
+import { DeviationCodeActionProvider } from "./services/compliance/DeviationCodeActions"
 /*
 Built using https://github.com/microsoft/vscode-webview-ui-toolkit
 
@@ -49,9 +52,44 @@ https://github.com/microsoft/vscode-webview-ui-toolkit-samples/tree/main/framewo
 
 */
 
+/**
+ * Resolve hostnames IPv4-first for the rest of this extension host process.
+ *
+ * ⚠️ **Without this, every backend call on a local cluster hangs for ten seconds and then reports a
+ * timeout that reads like the server is down.** The chain:
+ *
+ * 1. `code.localhost` resolves to `::1` *before* `127.0.0.1` — glibc returns IPv6 first, and Node
+ *    has honoured the resolver's order rather than reordering it since v17 (`verbatim` became the
+ *    default).
+ * 2. A kind cluster publishes its ingress as `0.0.0.0:9080`, which is **IPv4 only**. Nothing is
+ *    listening on `[::1]:9080`.
+ * 3. Connecting there is not refused, it is *dropped* — so there is no fast error to fall back from,
+ *    and the socket sits until undici's 10 s connect timeout fires.
+ *
+ * Node 20+ ships `autoSelectFamily`, which races both families and would paper over this. VS Code
+ * bundles its own undici and does not get that behaviour, which is why `curl` and a plain `node`
+ * script both succeed against the same URL while the extension times out — the symptom that makes
+ * this look like a server fault rather than a client one.
+ *
+ * `ipv4first` is what Node itself defaulted to before v17, it is what every other client in this
+ * stack effectively does, and it costs nothing against the production hosts, which are reachable
+ * over IPv4. It is set here rather than per-client so that axios, `fetch` and the telemetry sender
+ * cannot disagree about it.
+ */
+function preferIPv4ForBackendCalls() {
+	try {
+		dns.setDefaultResultOrder("ipv4first")
+	} catch (error) {
+		// Older runtimes lack it. Not fatal: it only restores a default, so the worst case is the
+		// behaviour we already had.
+		Logger.log(`Could not set DNS result order to ipv4first: ${error instanceof Error ? error.message : String(error)}`)
+	}
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
+	preferIPv4ForBackendCalls()
 	setupHostProvider(context)
 
 	const sidebarWebview = (await initialize(context)) as VscodeWebviewProvider
@@ -77,6 +115,11 @@ export async function activate(context: vscode.ExtensionContext) {
 		// here means every path into a compliance check is covered from activation rather
 		// than from whenever the first check happens to run.
 		setComplianceAuditSink(certManager)
+
+		// Lets a compliance run name its project, so the backend can apply that project's approved
+		// deviations. A resolver rather than a value: the key is minted by the evidence layer, which
+		// has not started yet at this point in activation.
+		setComplianceProjectKeyResolver(() => certManager.complianceProjectKey())
 
 		// Initialize sql.js WASM for certification database
 		const { SqlJsDatabase } = await import("@/certification/db/SqlJsDatabase")
@@ -609,6 +652,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	const complianceDiagnostics = new ComplianceDiagnostics()
 	ComplianceDiagnostics.setInstance(complianceDiagnostics)
 	context.subscriptions.push(complianceDiagnostics)
+	// The lightbulb route to raising a deviation. Registered for every language because the compliance
+	// engine's language set is decided by the backend's standards registry, not by this extension —
+	// scoping to a fixed list here would silently omit a language a new rule pack adds.
+	context.subscriptions.push(
+		vscode.languages.registerCodeActionsProvider("*", new DeviationCodeActionProvider(), {
+			providedCodeActionKinds: DeviationCodeActionProvider.providedCodeActionKinds,
+		}),
+	)
 	context.subscriptions.push(
 		vscode.commands.registerCommand("aeriocode.checkCompliance", async () => {
 			telemetryService.captureButtonClick("command_checkCompliance")
@@ -641,6 +692,35 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("aeriocode.clearComplianceDiagnostics", () => {
 			complianceDiagnostics.clear()
+		}),
+	)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.reviewComplianceDeviations", async () => {
+			telemetryService.captureButtonClick("command_reviewComplianceDeviations")
+			// Deliberately separate from raising one: approval must name somebody other than the raiser,
+			// and offering the button beside the rationale they just wrote is the shape of a rubber stamp.
+			const { reviewDeviations } = await import("@/services/compliance/reviewDeviationsCommand")
+			await reviewDeviations()
+		}),
+	)
+	context.subscriptions.push(
+		vscode.commands.registerCommand("aeriocode.raiseComplianceDeviation", async (finding?: ComplianceFinding) => {
+			telemetryService.captureButtonClick("command_raiseComplianceDeviation")
+			const editor = vscode.window.activeTextEditor
+			if (!editor) {
+				vscode.window.showWarningMessage("Open the file whose finding you want to raise a deviation against.")
+				return
+			}
+			// Offered from what is already on screen rather than from a fresh analysis: re-running it
+			// could return a different set from the one the user is looking at.
+			//
+			// `finding` is present when the lightbulb invoked this and absent from the palette. The
+			// palette registers the command with no arguments, so this stays undefined there.
+			const { raiseDeviation } = await import("@/services/compliance/raiseDeviationCommand")
+			await raiseDeviation({
+				findings: complianceDiagnostics.findingsFor(editor.document.uri.fsPath),
+				...(finding ? { finding } : {}),
+			})
 		}),
 	)
 

@@ -8,7 +8,9 @@ export async function getGenerationHistory(
 ): Promise<GenerationHistoryResponse> {
 	const certManager = CertificationManager.getInstance()
 	const db = certManager.getProjectDb()
-	if (!db) return GenerationHistoryResponse.create({ generations: [] })
+	if (!db) {
+		return GenerationHistoryResponse.create({ generations: [] })
+	}
 
 	const rows = db.queryGenerations({
 		user_id: request.userId || undefined,

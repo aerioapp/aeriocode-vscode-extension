@@ -5,7 +5,9 @@ import { CertificationManager } from "@/certification"
 export async function addTraceLink(_controller: Controller, request: AddTraceLinkRequest): Promise<TraceLinkResponse> {
 	const certManager = CertificationManager.getInstance()
 	const db = certManager.getProjectDb()
-	if (!db) throw new Error("Certification not active")
+	if (!db) {
+		throw new Error("Certification not active")
+	}
 	const id = db.insertTraceLink({
 		requirement_id: request.requirementId,
 		artifact_type: request.artifactType,

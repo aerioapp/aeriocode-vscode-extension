@@ -317,7 +317,9 @@ function verifySchema(db: SqlJsDatabase, migrations: Migration[], dbName: string
 	}
 
 	const missingTables = REQUIRED_TABLES.filter((t) => !existingTables.has(t))
-	if (missingTables.length === 0) return
+	if (missingTables.length === 0) {
+		return
+	}
 
 	Logger.log(
 		`[${dbName}] Schema verification found missing tables: ${missingTables.join(", ")} — resetting and re-running migrations`,

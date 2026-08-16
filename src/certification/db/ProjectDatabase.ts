@@ -98,7 +98,9 @@ export class ProjectDatabase {
 			values.push(updates.rationale)
 		}
 
-		if (fields.length === 0) return
+		if (fields.length === 0) {
+			return
+		}
 
 		fields.push("updated_at = datetime('now')")
 		values.push(requirementId)
@@ -157,12 +159,19 @@ export class ProjectDatabase {
 		this.db.prepare("DELETE FROM traceability_links WHERE id = ?").run(linkId)
 	}
 
-	getLinkCounts(): { traced: number; untraced: number } {
-		const traced = (
-			this.db.prepare("SELECT COUNT(DISTINCT artifact_path) as count FROM traceability_links").get() as { count: number }
-		).count
-		return { traced, untraced: 0 } // untraced is computed by TraceabilityChecker
-	}
+	/*
+	 * ⚠️ `getLinkCounts()` was removed rather than corrected.
+	 *
+	 * It returned `COUNT(DISTINCT artifact_path)` under the name `traced`, and its one production
+	 * caller divided that by the number of requirements to report a traceability percentage — a file
+	 * count over a requirement count. One requirement linked to five files reported 500% traced, and
+	 * that figure was the input to the enforcement gate, whose pass condition is `>= 100`.
+	 *
+	 * There is no corrected version of it that anyone should call: the question every caller actually
+	 * had was "how many requirements have implementing code", which is `summariseTraceability` in
+	 * `../traceabilityStatus`. Leaving a plausible-looking counter here is how the next caller gets
+	 * the same wrong answer.
+	 */
 
 	// --- Audit Trail (read-only from ProjectDatabase, writes go through AuditTrailService) ---
 
@@ -287,7 +296,9 @@ export class ProjectDatabase {
 			values.push(data.audit_entry_id)
 		}
 
-		if (fields.length === 0) return
+		if (fields.length === 0) {
+			return
+		}
 		values.push(generationId)
 
 		this.db.prepare(`UPDATE ai_generations SET ${fields.join(", ")} WHERE generation_id = ?`).run(...values)

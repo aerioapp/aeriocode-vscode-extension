@@ -1,6 +1,18 @@
+/* eslint-disable eslint-rules/no-direct-vscode-api -- a status bar item is a VS Code surface.
+ *
+ * `no-direct-vscode-api` exists so code can run under the standalone host as well as under VS Code.
+ * This class is genuinely absent from the standalone build — verified against the built bundle
+ * (`dist-standalone/aeriocode-core.js`) rather than by grepping `src/standalone/`, which is the
+ * check that gave four other files a wrong answer. `src/extension.ts` is the only construction site,
+ * and a status bar has no standalone equivalent to route through.
+ *
+ * `onDidChangeActiveTextEditor` is what the rule flags, and it is what tells this which folder's
+ * settings apply in a multi-root workspace.
+ */
 import * as vscode from "vscode"
 import { CertificationManager } from "@/certification/CertificationManager"
 import { describeProfile, resolveComplianceProfile, watchComplianceProfile } from "./ComplianceProfileResolver"
+import { COMPLIANCE_REGIMES } from "@shared/compliance/regimes"
 
 /**
  * A visible indication that a coding standard is being enforced.
@@ -83,7 +95,10 @@ export class ComplianceStatusBar implements vscode.Disposable {
 		this.item.text = `$(shield) ${describeProfile(profile)}`
 		this.item.tooltip = new vscode.MarkdownString(
 			`**Aeriocode is holding generated code to ${profile.standard}**` +
-				(profile.level ? ` at ${profile.regime === "iso-26262" ? "ASIL" : "DAL"} ${profile.level}` : "") +
+				// ⚠️ The regime's own word, not a two-way branch. This said "DAL" for every regime but
+				// ISO 26262, so an ECSS category B session read as "DAL B" — a DO-178C classification
+				// nobody made, on the one surface that is visible while code is being written.
+				(profile.level ? ` at ${COMPLIANCE_REGIMES[profile.regime].levelWord} ${profile.level}` : "") +
 				".\n\n" +
 				"Code written in this session is analysed after every write, and violations are returned to the " +
 				"model to fix.\n\n" +

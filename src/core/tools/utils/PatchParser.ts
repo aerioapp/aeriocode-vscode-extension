@@ -74,8 +74,12 @@ function levenshteinDistance(str1: string, str2: string): number {
 		matrix[r * cols + c] = v
 	}
 
-	for (let i = 0; i <= str2.length; i++) set(i, 0, i)
-	for (let j = 0; j <= str1.length; j++) set(0, j, j)
+	for (let i = 0; i <= str2.length; i++) {
+		set(i, 0, i)
+	}
+	for (let j = 0; j <= str1.length; j++) {
+		set(0, j, j)
+	}
 
 	for (let i = 1; i <= str2.length; i++) {
 		for (let j = 1; j <= str1.length; j++) {

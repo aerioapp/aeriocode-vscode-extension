@@ -271,6 +271,16 @@
 				"command": "aeriocode.clearComplianceDiagnostics",
 				"title": "Clear Compliance Diagnostics",
 				"category": "Aeriocode"
+			},
+			{
+				"command": "aeriocode.raiseComplianceDeviation",
+				"title": "Raise a Compliance Deviation",
+				"category": "Aeriocode"
+			},
+			{
+				"command": "aeriocode.reviewComplianceDeviations",
+				"title": "Review Compliance Deviations",
+				"category": "Aeriocode"
 			}
 		],
 		"keybindings": [
@@ -474,16 +484,12 @@
 						"",
 						"aerio-scs",
 						"jf-avpp",
-						"misra-c",
-						"misra-cpp",
 						"power-of-10"
 					],
 					"enumDescriptions": [
 						"Off. No coding standard is enforced and Aeriocode behaves as an ordinary assistant.",
-						"Aerio Safety Coding Standard - 148 rules, 134 checked automatically. Adoptable as a programme's Software Code Standards under DO-178C 11.8.",
+						"Aerio Safety Coding Standard - 158 rules, 137 checked automatically, covering C, C++, Ada and Rust. Adoptable as a programme's Software Code Standards under DO-178C 11.8, including eight rules constraining AI-assisted authoring under 11.8(e).",
 						"JF-AV++ (Air Vehicle C++). C++ only.",
-						"MISRA C. Guideline numbering is Aerio's own and unconfirmed; findings cite it as provisional.",
-						"MISRA C++. Guideline numbering is Aerio's own and unconfirmed; findings cite it as provisional.",
 						"NASA/JPL Power of 10. C only."
 					],
 					"scope": "resource",
@@ -494,14 +500,18 @@
 					"default": "do-178c",
 					"enum": [
 						"do-178c",
+						"ecss",
+						"nasa",
 						"iso-26262"
 					],
 					"enumDescriptions": [
-						"Airborne software. Levels are DAL A to D.",
-						"Road vehicles. Levels are ASIL D to A and QM. Aerio makes no claim about which rules apply at which ASIL."
+						"Airborne software. Levels are DO-178C design assurance levels A to D.",
+						"Space software, European. Levels are ECSS software criticality categories A to D, per ECSS-Q-ST-80C Annex D.",
+						"Space software, NASA. Levels are NASA software classifications A to F, per NPR 7150.2D Appendix E. Class F is business and IT software, not the bottom of the scale.",
+						"Not available. Aerio holds no copy of ISO 26262 and asserts no mapping from these rules to ASILs, so no level applies and the standard is applied in full. Recognised so an existing setting is not silently rewritten, but not offered in the picker."
 					],
 					"scope": "resource",
-					"markdownDescription": "Which assurance regime the level below is expressed in.\n\n**ISO 26262 applicability is not yet determined.** Aerio holds no copy of ISO 26262 and states no mapping from its rules to ASILs, so selecting it applies the standard in full rather than at a graded level."
+					"markdownDescription": "Which assurance regime the level below is expressed in.\n\n**DO-178C, ECSS and NASA each carry a projection. ISO 26262 does not and is not offered** - Aerio holds no copy of it and will not acquire one for this product, so it would apply the standard in full and change nothing you could observe. It stays in this list only so a workspace that already has it set is not silently rewritten to DO-178C.\n\nThe three projections are shaped differently, because the regimes are. DO-178C's levels differ in how much verification evidence they demand, so the projection grades rules down at the lower levels. ECSS instead requires the coding standard you declared to be observed at every criticality category and tailors that clause nowhere, so the ECSS projection is flat - only three process rules about naming tools in the plan are not applicable at category D. NASA is flat again but over six classifications, and its variation is about generated code rather than consequence: the requirement covering automatically generated source stops at class C, so the eight rules governing AI-assisted authoring do not apply at class D and return at class F.\n\n**No rule of the standard applies at NASA class E.** That is NPR 7150.2D's own position - it asks no coding or verification requirement of class E software at all - not Aerio relaxing anything.\n\nThree of these regimes label their levels A-D and mean three different things by them: an ECSS criticality category is a function's severity category *modulated by* whether a compensating provision exists outside the software, a DO-178C design assurance level is a failure condition classification with no such modulation, and a NASA class is assigned from the kind of mission the software serves. No publisher defines a mapping between any two of them, and Aerio does not convert."
 				},
 				"aeriocode.compliance.level": {
 					"type": "string",
@@ -512,10 +522,22 @@
 						"B",
 						"C",
 						"D",
+						"E",
+						"F",
 						"QM"
 					],
+					"enumDescriptions": [
+						"Not assigned. The standard is applied in full, which is the stricter reading.",
+						"DO-178C level A, ECSS category A, or NASA class A.",
+						"DO-178C level B, ECSS category B, NASA class B, or ISO 26262 ASIL B.",
+						"DO-178C level C, ECSS category C, NASA class C, or ISO 26262 ASIL C.",
+						"DO-178C level D, ECSS category D, NASA class D, or ISO 26262 ASIL D.",
+						"NASA class E only. NPR 7150.2D asks no coding requirement of class E software, so no rule of the standard is applied.",
+						"NASA class F only - general-purpose computing, business and IT software. Not the bottom of the scale: it carries the coding-standard requirement class E does not.",
+						"ISO 26262 QM only."
+					],
 					"scope": "resource",
-					"markdownDescription": "The design assurance level (DO-178C: A, B, C, D) or automotive safety integrity level (ISO 26262: D, C, B, A, QM) this software is being developed to.\n\nLeave empty if you have not been assigned one - the standard is then applied in full, which is the stricter reading. A level should be set from the system safety assessment, not chosen for convenience: it is a claim about how much assurance the software needs."
+					"markdownDescription": "The integrity level this software is being developed to: a DO-178C design assurance level (A, B, C, D), an ECSS software criticality category (A, B, C, D), a NASA software classification (A to F), or an ISO 26262 ASIL (D, C, B, A, QM). Which of those the letter means is decided by the regime above.\n\nLeave empty if you have not been assigned one - the standard is then applied in full, which is the stricter reading. A level should be set from the system safety assessment or the project's software classification, not chosen for convenience: it is a claim about how much assurance the software needs.\n\n**E and F belong to the NASA regime only.** A level that does not belong to the selected regime is dropped and reported rather than applied, because silently ignoring it would relax the standard without saying so."
 				},
 				"aeriocode.compliance.gateEnabled": {
 					"type": "boolean",

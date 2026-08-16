@@ -2,6 +2,7 @@ import * as vscode from "vscode"
 import { RequirementTagParser } from "./RequirementTagParser"
 import type { ProjectDatabase } from "./db/ProjectDatabase"
 import type { ParsedRequirementTag, UntracedFunction } from "./types"
+import { summariseTraceability, type TraceabilitySummary } from "./traceabilityStatus"
 
 /**
  * TraceabilityChecker - Non-blocking incremental traceability checks on file save.
@@ -41,7 +42,9 @@ export class TraceabilityChecker implements vscode.Disposable {
 	private async debouncedCheck(document: vscode.TextDocument): Promise<void> {
 		const key = document.uri.fsPath
 		const existing = this.debounceTimers.get(key)
-		if (existing) clearTimeout(existing)
+		if (existing) {
+			clearTimeout(existing)
+		}
 
 		this.debounceTimers.set(
 			key,
@@ -60,7 +63,9 @@ export class TraceabilityChecker implements vscode.Disposable {
 		const filePath = document.uri.fsPath
 
 		// Skip non-source files
-		if (!this.isSourceFile(filePath)) return
+		if (!this.isSourceFile(filePath)) {
+			return
+		}
 
 		// 1. Parse requirement tags from code
 		const tags = RequirementTagParser.parse(content, filePath)
@@ -94,7 +99,12 @@ export class TraceabilityChecker implements vscode.Disposable {
 			const range = new vscode.Range(func.start_line - 1, 0, func.end_line - 1, 0)
 			const diagnostic = new vscode.Diagnostic(
 				range,
-				`Untraced: function "${func.name}" has no linked requirement (DO-178C §5.5)`,
+				// No regime clause is cited. This read "(DO-178C §5.5)" on every warning regardless of
+				// the active profile, so an ECSS or NASA project was shown an airborne clause that does
+				// not govern it. All three regimes require requirements-to-code traceability, but their
+				// clause numbering differs and Aerio holds no verified per-regime citation for it —
+				// inventing one would be worse than omitting it. The warning is actionable without it.
+				`Untraced: function "${func.name}" has no linked requirement`,
 				vscode.DiagnosticSeverity.Warning,
 			)
 			diagnostic.source = "Aeriocode Traceability"
@@ -146,21 +156,33 @@ export class TraceabilityChecker implements vscode.Disposable {
 	}
 
 	/**
-	 * Get traceability coverage for the entire project.
+	 * Traceability coverage for the whole project, in both directions.
+	 *
+	 * DO-178C 11.21 requires bi-directional associations, and this reported only one direction:
+	 * how much *code* carried a tag. It never answered the question Table A-4 objective 6 and
+	 * Table A-5 objective 5 actually ask — whether every requirement has implementing code.
+	 *
+	 * ⚠️ It also reported `totalFunctions` and `tracedFunctions` as the same value, so function
+	 * coverage read 100% whatever the project looked like. Removed rather than corrected: the link
+	 * table records artifacts, not functions, so there is no function total in it to report.
+	 *
+	 * ⚠️ The two directions come from `summariseTraceability`, not from a loop here. This file and
+	 * the matrix controller each grew their own copy of that arithmetic in the same change that
+	 * introduced it — two implementations of one answer, written a few hundred lines apart, which is
+	 * the defect this module had just finished correcting. The file counts below stay, because they
+	 * are the only part of this that is about the workspace rather than the baseline.
 	 */
-	async getProjectCoverage(): Promise<{
-		totalFiles: number
-		tracedFiles: number
-		untracedFiles: number
-		totalFunctions: number
-		tracedFunctions: number
-		coveragePercent: number
-	}> {
+	async getProjectCoverage(): Promise<
+		TraceabilitySummary & {
+			totalFiles: number
+			taggedFiles: number
+			untaggedFiles: number
+		}
+	> {
 		const links = this.db.getAllLinks()
-		const uniqueTracedFiles = new Set(links.map((l) => l.artifact_path).filter(Boolean))
-		const tracedFiles = uniqueTracedFiles.size
+		const summary = summariseTraceability(this.db.getAllRequirements(), links)
+		const taggedPaths = new Set(links.map((link) => link.artifact_path).filter(Boolean))
 
-		// Count total source files in workspace using async findFiles
 		let totalFiles = 0
 		if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
 			try {
@@ -175,16 +197,14 @@ export class TraceabilityChecker implements vscode.Disposable {
 			}
 		}
 
-		const untracedFiles = Math.max(0, totalFiles - tracedFiles)
-		const coveragePercent = totalFiles > 0 ? Math.round((tracedFiles / totalFiles) * 100) : 0
-
 		return {
+			...summary,
 			totalFiles,
-			tracedFiles,
-			untracedFiles,
-			totalFunctions: links.length,
-			tracedFunctions: links.length,
-			coveragePercent,
+			taggedFiles: taggedPaths.size,
+			// Untagged, not unintended. Aerio cannot tell code that implements nothing from code
+			// nobody annotated, and the stronger claim would accuse a programme of something this
+			// data does not show.
+			untaggedFiles: Math.max(0, totalFiles - taggedPaths.size),
 		}
 	}
 

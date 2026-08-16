@@ -58,6 +58,42 @@ export function getComplianceAuditSink(): ComplianceAuditSink | null {
 }
 
 /**
+ * How the client learns which project it is analysing, so the backend can apply that project's
+ * approved deviations.
+ *
+ * ⚠️ The key is the **only** thing sent. Deviations themselves are never posted from here: a client
+ * able to supply them could waive its own findings in the same request that produces the signed
+ * report about them, so the backend reads them from the evidence store and ignores anything a caller
+ * attaches. This resolver exists to name the project, not to influence the answer.
+ *
+ * Installed at activation like the sink above, and for the same reason — four call paths reach
+ * `analyze`, and a fifth must not be able to produce a run that silently ignores the project's
+ * deviations by forgetting to pass something.
+ *
+ * Left unset it returns null, and the backend then applies none. That is the correct default: a
+ * scratch file with no project has no waivers, and the stricter answer is the safe one.
+ */
+export type ComplianceProjectKeyResolver = () => string | null
+
+let projectKeyResolver: ComplianceProjectKeyResolver | null = null
+
+export function setComplianceProjectKeyResolver(next: ComplianceProjectKeyResolver | null): void {
+	projectKeyResolver = next
+}
+
+/** Never throws: a project key that cannot be resolved means no deviations, not a failed analysis. */
+export function resolveComplianceProjectKey(): string | null {
+	if (!projectKeyResolver) {
+		return null
+	}
+	try {
+		return projectKeyResolver()
+	} catch {
+		return null
+	}
+}
+
+/**
  * Record an analysis.
  *
  * Never throws. A failure to write evidence must not fail the user's compliance check —

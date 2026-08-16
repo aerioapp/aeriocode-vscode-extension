@@ -6,7 +6,9 @@ import { CertificationManager } from "@/certification"
 export async function getTraceabilityLinks(_controller: Controller, request: StringRequest): Promise<TraceabilityLinksResponse> {
 	const certManager = CertificationManager.getInstance()
 	const db = certManager.getProjectDb()
-	if (!db) return TraceabilityLinksResponse.create({ links: [] })
+	if (!db) {
+		return TraceabilityLinksResponse.create({ links: [] })
+	}
 	const links = db.getLinksForArtifact(request.value)
 	return TraceabilityLinksResponse.create({
 		links: links.map((l) =>

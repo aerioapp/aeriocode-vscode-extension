@@ -38,8 +38,8 @@ const ProfileSetup = ({ onSetup, onSkip }: ProfileSetupProps) => {
 					<span className="codicon codicon-shield codicon-lg text-[48px] text-[var(--vscode-focusBorder)]" />
 					<h2 className="text-[16px] text-[var(--vscode-foreground)] m-0">Enable Certification Features</h2>
 					<p className="text-[13px] text-[var(--vscode-descriptionForeground)] m-0 max-w-[400px]">
-						AerioCode can help you comply with DO-178C and other safety standards by providing requirement
-						traceability, audit trails, and compliance checks.
+						Requirement traceability, audit trails and compliance checks for DO-178C, ECSS-E-ST-40C and NPR 7150.2D
+						programmes.
 					</p>
 				</div>
 

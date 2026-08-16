@@ -54,6 +54,8 @@ interface ExtensionStateContextType extends ExtensionState {
 	certificationActive: boolean
 	certificationProfile: string
 	certificationLevel: string
+	certificationVersion: string
+	certificationTitle: string
 	refreshCertificationStatus: () => void
 
 	// Setters
@@ -400,6 +402,11 @@ export const ExtensionStateContextProvider: React.FC<{
 	const [certificationActive, setCertificationActive] = useState(false)
 	const [certificationProfile, setCertificationProfile] = useState("")
 	const [certificationLevel, setCertificationLevel] = useState("")
+	// The document's issue and name. Kept beside the identifier because `ECSS-E-ST-40C` alone is
+	// still shorthand a reader has to already know; `Rev.1 — Space engineering: Software general
+	// requirements` is what tells them which document their project answers to.
+	const [certificationVersion, setCertificationVersion] = useState("")
+	const [certificationTitle, setCertificationTitle] = useState("")
 
 	const refreshCertificationStatus = useCallback(async () => {
 		try {
@@ -407,11 +414,15 @@ export const ExtensionStateContextProvider: React.FC<{
 			setCertificationActive(response.active)
 			setCertificationProfile(response.profileStandard)
 			setCertificationLevel(response.profileLevel)
+			setCertificationVersion(response.profileVersion)
+			setCertificationTitle(response.profileTitle)
 		} catch (error) {
 			console.error("[Certification] Failed to get status:", error)
 			setCertificationActive(false)
 			setCertificationProfile("")
 			setCertificationLevel("")
+			setCertificationVersion("")
+			setCertificationTitle("")
 		}
 	}, [])
 
@@ -940,6 +951,8 @@ export const ExtensionStateContextProvider: React.FC<{
 		certificationActive,
 		certificationProfile,
 		certificationLevel,
+		certificationVersion,
+		certificationTitle,
 		refreshCertificationStatus,
 		globalAeriocodeRulesToggles: state.globalAeriocodeRulesToggles || {},
 		localAeriocodeRulesToggles: state.localAeriocodeRulesToggles || {},

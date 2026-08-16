@@ -1,24 +1,141 @@
+/**
+ * What a regime requires of one coverage metric at one level.
+ *
+ * ⚠️ **A number is not enough, and assuming it was is what forced this union.** Three regimes were
+ * read against each other and each states something a percentage cannot express:
+ *
+ * - **DO-178C** fixes a number per level. `100`, or `0` where the level does not ask for that metric.
+ * - **ECSS-E-ST-40C Rev.1** fixes 100% statement and decision coverage at categories A and B, and
+ *   marks C and D **TBA** — a value to be agreed with the customer and measured per
+ *   ECSS-Q-ST-80 clause 6.3.5.2. Storing that as `0` would tell a supplier no coverage is required;
+ *   storing it as `100` would invent an agreement they have not made. Both are wrong, in opposite
+ *   directions.
+ * - **NPR 7150.2D** requires 100% MC/DC under SWE-219 **for safety-critical software components**,
+ *   gated on the safety-critical determination rather than on the software class. A class A project
+ *   whose software is not safety-critical has no percentage stated for it at all.
+ *
+ * So the vocabulary is four-valued, and the three non-numeric values are different claims:
+ * `to-be-agreed` means the regime defers to the parties, `conditional` means the regime states a
+ * number but only under a condition the tool cannot evaluate, and `not-applicable` means the regime
+ * does not ask for this metric here.
+ */
+export type CoverageRequirement = number | "to-be-agreed" | "conditional" | "not-applicable"
+
+/**
+ * Whether a regime requires verification independent of the developer.
+ *
+ * Three-valued for the same reason. DO-178C requires it at Levels A and B and not below.
+ * ECSS-E-ST-40C's Annex R marks the independent software verification and validation plans
+ * (clauses 5.6.2.2 and 5.8.2.2) applicable at categories A and B and **not applicable** at C and D.
+ * NPR 7150.2D only *recommends* it, in the note to SWE-219 — "it is recommended that someone
+ * independent of the developer of the code under test design and perform this testing" — which is
+ * neither required nor absent, and recording it as `false` would understate what the directive says.
+ */
+export type IndependenceRequirement = boolean | "recommended"
+
+/**
+ * One published document a profile is built from.
+ *
+ * ⚠️ A list rather than a single field, because **no regime here is one document.** ECSS splits
+ * software engineering across ECSS-E-ST-40C and product assurance across ECSS-Q-ST-80C, and the
+ * criticality categories a profile projects come from the second, not the first. NASA splits
+ * engineering requirements (NPR 7150.2D) from assurance and safety (NASA-STD-8739.8B) and document
+ * content again into NASA-HDBK-2203. Naming only one would credit a document with obligations it
+ * does not contain.
+ */
+export interface SourceDocument {
+	/** The publisher's own identifier, e.g. `ECSS-Q-ST-80C`. */
+	id: string
+	/** The issue this profile was built from, e.g. `Rev.2`. Empty where the id carries it. */
+	revision: string
+	/** What the document is, in its publisher's words. */
+	title: string
+	/** What this profile takes from it — stated so a reader can tell which document answers what. */
+	role: string
+}
+
 // Certification profile loaded from JSON config
 export interface CertificationProfile {
-	standard: string // 'DO-178C', 'ISO-26262', 'IEC-62304'
-	version: string // 'C', '2018', etc.
-	publisher: string // 'RTCA/EUROCAE'
+	/**
+	 * The specific document this profile certifies against — `DO-178C`, `ECSS-E-ST-40C`,
+	 * `NPR-7150.2D`.
+	 *
+	 * ⚠️ **Not the publisher's name.** This read `ECSS`, which is a standards body with dozens of
+	 * publications, and a panel showing "ECSS" told a supplier nothing about which of them their
+	 * project had been activated against. `NASA` would have been worse still: NPR 7150.2D and
+	 * NASA-STD-8739.8B impose different obligations on different parties. The full set each profile
+	 * draws on is in {@link based_on}; this names the one it is *of*.
+	 */
+	standard: string
+	/** The issue of {@link standard} — `C`, `Rev.1`, `D`. */
+	version: string
+	/** Who publishes it — 'RTCA/EUROCAE', 'ECSS / ESA', 'NASA'. */
+	publisher: string
+	/** What {@link standard} is called, so a screen can show more than an identifier. */
+	title?: string
+	/** Every published document this profile is built from, including {@link standard}. */
+	based_on?: SourceDocument[]
 	levels: Record<string, CertificationLevel>
 	requirement_id_patterns: string[]
 	requirement_levels: string[]
 	traceability_directions: string[]
 	safety_coding_rules?: string
 	coding_standards?: string[]
+	/**
+	 * The regime id this profile belongs to, matching `@shared/compliance/regimes`.
+	 *
+	 * Present so the certification profile and the coding-standard regime cannot disagree about
+	 * which scale a level letter belongs to — the failure that had an ECSS category B session
+	 * displaying as "DAL B".
+	 */
+	regime?: string
+	/** What a level letter means here, and where that is defined. A citation, never reproduced text. */
+	level_basis?: string
+	/**
+	 * ⚠️ What this profile does **not** cover, stated on the profile rather than left to be found.
+	 *
+	 * Aerio's Annex A objective tables and its eleven document drafts are DO-178C artifacts. A
+	 * non-DO-178C profile gets the coding standard, the analysis and the audit trail; it does not get
+	 * an objectives dashboard for its own regime, because neither ECSS nor NPR 7150.2D organises
+	 * around an objective grid and projecting one onto them would invent a structure the publisher
+	 * does not use.
+	 */
+	unsupported_artifacts?: string[]
 }
 
 export interface CertificationLevel {
 	label: string
+	/**
+	 * Why software is assigned this level.
+	 *
+	 * ⚠️ Named `failure_condition` for DO-178C, where it is exactly that. It is **not** a failure
+	 * condition under the other two: an ECSS category is a function's severity category modulated by
+	 * whether a compensating provision exists outside the software, and a NASA class is assigned from
+	 * the kind of mission the software serves. The field is kept for compatibility and the text says
+	 * which of the three it is.
+	 */
 	failure_condition: string
+	/**
+	 * Why software lands at this level, in a sentence a screen can show.
+	 *
+	 * Separate from {@link failure_condition}, which a dropdown renders inline and therefore has to
+	 * stay short. Overloading one field with both the classification and its explanation produced
+	 * option labels a paragraph long the first time a non-DO-178C profile was rendered.
+	 */
+	assigned_from?: string
 	coverage_metric: string
-	statement_coverage: number
-	decision_coverage: number
-	mcdc_coverage: number
-	verification_independence: boolean
+	statement_coverage: CoverageRequirement
+	decision_coverage: CoverageRequirement
+	mcdc_coverage: CoverageRequirement
+	/** Present where a coverage value is `conditional`; states the condition in the regime's words. */
+	coverage_condition?: string
+	/**
+	 * Object-code coverage, which only ECSS states as a level requirement — 100% at category A where
+	 * source-to-object traceability cannot be verified, and not applicable at B, C and D. DO-178C
+	 * treats source-to-object traceability as a Level A objective Aerio explicitly does not cover.
+	 */
+	object_code_coverage?: CoverageRequirement
+	verification_independence: IndependenceRequirement
 	required_artifacts: string[]
 }
 

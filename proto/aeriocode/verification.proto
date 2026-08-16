@@ -56,6 +56,25 @@ service VerificationService {
   // Aerio's DO-330 qualification position. Needs no project data: a customer asks this before
   // they have any.
   rpc getQualificationPosition(EmptyRequest) returns (QualificationPositionResponse);
+
+  // --- Regime status ---------------------------------------------------------------------------
+
+  // ⚠️ Two RPCs and two response messages, deliberately not one `getRegimeStatus`.
+  //
+  // The three publishers do not organise around the same thing, and a shared message would have to
+  // flatten them: DO-178C has objectives carrying independence, ECSS has expected outputs that go
+  // Ytba, NASA has requirements over six classes with two that gate on a safety-critical
+  // determination the matrix does not record. A common {id, applicable} row drops `toBeAgreed` and
+  // `conditional` — and each of those is the difference between an obligation and no obligation.
+  //
+  // The `value` of the StringRequest is the level, named by whatever the publisher calls it: an
+  // ECSS software criticality category, a NASA software classification.
+
+  // ECSS Annex R expected-output status for one criticality category.
+  rpc getEcssOutputStatus(StringRequest) returns (EcssOutputStatusResponse);
+
+  // NPR 7150.2D Appendix C requirement status for one software classification.
+  rpc getNasaRequirementStatus(StringRequest) returns (NasaRequirementStatusResponse);
 }
 
 // --- Shared ------------------------------------------------------------------------------------
@@ -296,4 +315,76 @@ message QualificationPositionResponse {
   repeated ToolOperationalRequirement requirements = 6;
   string summary_statement = 7;
   string error = 8;
+}
+
+// --- Regime status -----------------------------------------------------------------------------
+
+// One row of the ECSS Annex R applicability table, with what Aerio holds against it.
+message EcssOutputRow {
+  // The clause identification, including the "eo x" suffix where one clause names several outputs.
+  string id = 1;
+  // The expected output's own name — a title cited as an identifier, the way a DRD name is.
+  string output = 2;
+  // What Annex R asks at the selected category: "required", "to-be-agreed" or "not-applicable".
+  //
+  // ⚠️ Three values, not a bool. Ytba is neither owed nor excused: it is the statement that what
+  // this deliverable must contain has not been settled between supplier and customer. Collapsing it
+  // into either neighbour misreports what is owed, in opposite directions.
+  string force = 3;
+  // "partial", "no-evidence", "to-be-agreed", "not-applicable" or "out-of-scope". Never "satisfied".
+  string status = 4;
+  // What Aerio contributes, where it contributes anything.
+  string contributes = 5;
+}
+
+message EcssOutputStatusResponse {
+  string document = 1;
+  string publisher = 2;
+  string attribution = 3;
+  string category = 4;
+  int32 outputs_in_standard = 5;
+  int32 applicable_at_category = 6;
+  // Rows Annex R marks Ytba at this category. Reported separately because they are their own state.
+  int32 to_be_agreed = 7;
+  int32 with_partial_evidence = 8;
+  int32 with_no_evidence = 9;
+  int32 out_of_scope_for_aerio = 10;
+  string statement = 11;
+  repeated EcssOutputRow rows = 12;
+  string error = 13;
+}
+
+// One row of the NPR 7150.2D Appendix C requirements matrix, with what Aerio holds against it.
+message NasaRequirementRow {
+  // The SWE identifier.
+  string id = 1;
+  // The directive section stating it.
+  string section = 2;
+  bool applicable = 3;
+  // "partial", "no-evidence", "conditional", "not-applicable" or "out-of-scope". Never "satisfied".
+  string status = 4;
+  string contributes = 5;
+  // ⚠️ Set where the requirement's text gates on something Appendix C does not record — the
+  // safety-critical determination. SWE-219 and SWE-220 are marked applicable at classes A-D but
+  // apply only to identified safety-critical components, so a class A project whose software is not
+  // safety-critical owes neither. Reporting them as flatly applicable would say otherwise.
+  string condition = 6;
+}
+
+message NasaRequirementStatusResponse {
+  string document = 1;
+  string publisher = 2;
+  string attribution = 3;
+  string software_class = 4;
+  int32 requirements_in_matrix = 5;
+  int32 applicable_at_class = 6;
+  // Requirements that apply only under a stated condition. NASA's equivalent of nothing in the
+  // other two regimes.
+  int32 conditional = 7;
+  int32 with_partial_evidence = 8;
+  int32 with_no_evidence = 9;
+  int32 out_of_scope_for_aerio = 10;
+  string statement = 11;
+  repeated NasaRequirementRow rows = 12;
+  string error = 13;
 }

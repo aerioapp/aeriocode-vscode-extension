@@ -2,19 +2,48 @@ import { VSCodeDataGrid, VSCodeDataGridCell, VSCodeDataGridRow } from "@vscode/w
 import { memo, useEffect, useState } from "react"
 import { CertificationServiceClient } from "@/services/grpc-client"
 import { EmptyRequest } from "@shared/proto/aeriocode/common"
+import type { TraceabilityDirectionSummary, TraceabilityMatrixRow } from "@shared/proto/aeriocode/certification"
 
-type MatrixRow = {
-	requirementId: string
-	requirementLevel: string
-	title: string
-	dalLevel: string
-	linkedSourceFiles: string[]
-	linkedTestFiles: string[]
-	coveragePercent: number
-}
+/**
+ * The traceability matrix, showing both directions DO-178C 11.21 requires.
+ *
+ * ⚠️ The Coverage column used to show a percentage, and it was always 100 or 0 — the backend
+ * computed it from whether a requirement had *any* link, so a requirement with a design document
+ * attached and no implementing code showed green at 100%. Implemented and Verified are separate
+ * columns now because they are separate objectives (Table A-4 objective 6, Table A-5 objective 5)
+ * and a programme can satisfy one and not the other.
+ */
+/**
+ * ⚠️ The generated proto types, not hand-written copies of them.
+ *
+ * These were declared locally and the response was `as`-cast onto them, which meant the cast
+ * suppressed exactly the error the generated types exist to raise: rename or drop a proto field and
+ * this file goes on compiling and renders `undefined`. `coverage_percent` had just been removed from
+ * the wire for being meaningless, so this is a live risk rather than a hypothetical one.
+ */
+type MatrixRow = TraceabilityMatrixRow
+type DirectionSummary = TraceabilityDirectionSummary
+
+/**
+ * How many orphaned ids to name before summarising the rest.
+ *
+ * An unbounded `join(", ")` is fine on the project this was written against and is not fine on one
+ * that renamed a requirement prefix: every tag in the tree becomes orphaned at once, and the panel
+ * renders a single paragraph thousands of ids long.
+ */
+const ORPHAN_IDS_SHOWN = 20
+
+const Marker = ({ met, label }: { met: boolean; label: string }) => (
+	<span
+		title={label}
+		style={{ color: met ? "var(--vscode-testing-iconPassed)" : "var(--vscode-testing-iconFailed)" }}
+		className={`codicon codicon-${met ? "pass" : "circle-slash"}`}
+	/>
+)
 
 const TraceabilityMatrix = () => {
 	const [rows, setRows] = useState<MatrixRow[]>([])
+	const [summary, setSummary] = useState<DirectionSummary | null>(null)
 	const [loading, setLoading] = useState(true)
 
 	useEffect(() => {
@@ -22,6 +51,7 @@ const TraceabilityMatrix = () => {
 			try {
 				const response = await CertificationServiceClient.getTraceabilityMatrix(EmptyRequest.create({}))
 				setRows(response.rows || [])
+				setSummary(response.summary ?? null)
 			} catch (error) {
 				console.error("Failed to fetch traceability matrix:", error)
 			} finally {
@@ -51,9 +81,23 @@ const TraceabilityMatrix = () => {
 
 	return (
 		<div className="flex flex-col gap-[8px]">
-			<div className="flex justify-between items-center mb-[8px]">
-				<span className="text-[12px] text-[var(--vscode-descriptionForeground)]">{rows.length} requirements</span>
-			</div>
+			{summary && (
+				<div className="flex flex-col gap-[4px] mb-[8px]">
+					<span className="text-[12px]">
+						{summary.implemented}/{summary.requirements} implemented &middot; {summary.verified}/
+						{summary.requirements} verified
+					</span>
+					{summary.orphanedTagRequirementIds.length > 0 && (
+						<span className="text-[11px] break-words" style={{ color: "var(--vscode-testing-iconFailed)" }}>
+							{summary.orphanedTagRequirementIds.length} tag(s) name a requirement that is not in the baseline:{" "}
+							{summary.orphanedTagRequirementIds.slice(0, ORPHAN_IDS_SHOWN).join(", ")}
+							{summary.orphanedTagRequirementIds.length > ORPHAN_IDS_SHOWN &&
+								` and ${summary.orphanedTagRequirementIds.length - ORPHAN_IDS_SHOWN} more`}
+						</span>
+					)}
+					<span className="text-[11px] text-[var(--vscode-descriptionForeground)]">{summary.statement}</span>
+				</div>
+			)}
 			<VSCodeDataGrid>
 				<VSCodeDataGridRow row-type="header">
 					<VSCodeDataGridCell cell-type="columnheader" grid-column="1">
@@ -69,7 +113,10 @@ const TraceabilityMatrix = () => {
 						Linked Files
 					</VSCodeDataGridCell>
 					<VSCodeDataGridCell cell-type="columnheader" grid-column="5">
-						Coverage
+						Implemented
+					</VSCodeDataGridCell>
+					<VSCodeDataGridCell cell-type="columnheader" grid-column="6">
+						Verified
 					</VSCodeDataGridCell>
 				</VSCodeDataGridRow>
 				{rows.map((row) => (
@@ -81,17 +128,13 @@ const TraceabilityMatrix = () => {
 							{row.linkedSourceFiles.length + row.linkedTestFiles.length}
 						</VSCodeDataGridCell>
 						<VSCodeDataGridCell grid-column="5">
-							<span
-								style={{
-									color:
-										row.coveragePercent >= 80
-											? "var(--vscode-testing-iconPassed)"
-											: row.coveragePercent >= 50
-												? "var(--vscode-charts-yellow)"
-												: "var(--vscode-testing-iconFailed)",
-								}}>
-								{row.coveragePercent}%
-							</span>
+							<Marker
+								met={row.implemented}
+								label={row.implemented ? "Has implementing code" : "No implementing code"}
+							/>
+						</VSCodeDataGridCell>
+						<VSCodeDataGridCell grid-column="6">
+							<Marker met={row.verified} label={row.verified ? "Has a linked test" : "No linked test"} />
 						</VSCodeDataGridCell>
 					</VSCodeDataGridRow>
 				))}

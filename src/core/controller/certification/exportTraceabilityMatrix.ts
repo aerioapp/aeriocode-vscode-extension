@@ -8,7 +8,9 @@ export async function exportTraceabilityMatrix(_controller: Controller, request:
 		const certManager = CertificationManager.getInstance()
 		const db = certManager.getProjectDb()
 		const auditService = certManager.getAuditService()
-		if (!db || !auditService) throw new Error("Certification not active")
+		if (!db || !auditService) {
+			throw new Error("Certification not active")
+		}
 		const exportService = new ExportService(db, auditService)
 		const filePath = await exportService.exportTraceabilityMatrix({ format: (request.format as "csv" | "xlsx") || "xlsx" })
 		return ExportResponse.create({ filePath, success: true, error: "" })

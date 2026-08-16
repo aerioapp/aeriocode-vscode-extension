@@ -46,6 +46,8 @@ export async function getCertificationStatus(
 			active: status.active,
 			profileStandard: status.profile?.standard || "",
 			profileLevel: status.profile_level || "",
+			profileVersion: status.profile?.version || "",
+			profileTitle: status.profile?.title || "",
 			tracedCount: status.traced_count,
 			untracedCount: status.untraced_count,
 			traceabilityCoveragePercent: status.traceability_coverage_percent,

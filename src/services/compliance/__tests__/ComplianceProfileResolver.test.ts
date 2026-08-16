@@ -108,6 +108,128 @@ describe("resolving the compliance profile", () => {
 			})
 		})
 
+		it("accepts an ECSS software criticality category", () => {
+			// The space regime. ECSS categories run A to D exactly as DAL does, so this cannot be
+			// distinguished from the airborne case by the level alone — which is the whole reason the
+			// regime travels alongside it rather than being inferred.
+			set("standard", "aerio-scs")
+			set("regime", "ecss")
+			set("level", "B")
+
+			expect(resolveComplianceProfile()).to.deep.equal({
+				standard: "aerio-scs",
+				level: "B",
+				regime: "ecss",
+				levelSource: "workspace",
+			})
+		})
+
+		it("drops QM under ECSS, which defines no such category", () => {
+			// ⚠️ The failure this guards is silent relaxation. ECSS categories are A to D; QM belongs to
+			// ISO 26262. Passing it through would leave the backend with a level it cannot resolve, and
+			// the applicability lookup would return null for every rule — reading as "nothing applies"
+			// rather than as a mistake.
+			set("standard", "aerio-scs")
+			set("regime", "ecss")
+			set("level", "QM")
+
+			expect(resolveComplianceProfile()?.level).to.equal(null)
+		})
+
+		it("names an ECSS level a category, not a DAL", () => {
+			// The two scales share their letters, so the word is the only thing on screen that says
+			// which one is in force. Calling an ECSS category a DAL states a DO-178C classification
+			// nobody made.
+			set("standard", "aerio-scs")
+			set("regime", "ecss")
+			set("level", "A")
+
+			expect(describeProfile(resolveComplianceProfile())).to.contain("Category A")
+			expect(describeProfile(resolveComplianceProfile())).to.not.contain("DAL")
+		})
+
+		it("accepts a NASA software classification, including the two letters no other regime has", () => {
+			// E and F exist only here. A resolver that shared one level list across the regimes would
+			// either reject them or leak them into DO-178C, and both are silent wrong answers.
+			set("standard", "aerio-scs")
+			set("regime", "nasa")
+			set("level", "E")
+
+			expect(resolveComplianceProfile()).to.deep.equal({
+				standard: "aerio-scs",
+				level: "E",
+				regime: "nasa",
+				levelSource: "workspace",
+			})
+
+			set("level", "F")
+			expect(resolveComplianceProfile()?.level).to.equal("F")
+		})
+
+		it("drops E and F under ECSS and DO-178C, which define no such level", () => {
+			// ⚠️ The mirror of the QM case, and the one a user is most likely to hit: the level enum in
+			// settings offers A to F and QM in one list, because VS Code has no way to vary an enum by
+			// another setting. So picking "F" while the regime says ECSS is a plausible mistake, and
+			// passing it through would leave every rule resolving to null — reading as "nothing
+			// applies" rather than as a misconfiguration.
+			set("standard", "aerio-scs")
+			for (const regime of ["ecss", "do-178c"]) {
+				set("regime", regime)
+				for (const level of ["E", "F"]) {
+					set("level", level)
+					expect(resolveComplianceProfile()?.level, `${regime} ${level}`).to.equal(null)
+				}
+			}
+		})
+
+		it("names a NASA level a class, not a category or a DAL", () => {
+			// Three regimes now label a level "A" and mean three different things. The word is the only
+			// thing on screen that says which, so calling a NASA class a DAL states a DO-178C
+			// classification nobody made — and calling it a category states an ECSS one.
+			set("standard", "aerio-scs")
+			set("regime", "nasa")
+			set("level", "A")
+
+			const described = describeProfile(resolveComplianceProfile())
+			expect(described).to.contain("Class A")
+			expect(described).to.not.contain("DAL")
+			expect(described).to.not.contain("Category")
+		})
+
+		it("takes the regime the certification profile declares, rather than guessing from its name", () => {
+			// ⚠️ The resolver used to pattern-match the standard's name to pick a regime, with DO-178C as
+			// the fallback — so a profile whose name none of the patterns anticipated was labelled a
+			// design assurance level silently. Every built-in profile now declares its regime.
+			for (const [standard, level, regime, word] of [
+				["ECSS", "CAT_B", "ecss", "Category B"],
+				["NASA-NPR-7150.2D", "CLASS_F", "nasa", "Class F"],
+				["DO-178C", "DAL_A", "do-178c", "DAL A"],
+			] as const) {
+				;(CertificationManager as any).instance = {
+					getActiveProfile: () => ({ standard, regime }),
+					getActiveProfileLevel: () => level,
+				}
+				set("standard", "aerio-scs")
+				const resolved = resolveComplianceProfile()
+				expect(resolved?.regime, standard).to.equal(regime)
+				expect(resolved?.levelSource, standard).to.equal("certification")
+				expect(describeProfile(resolved), standard).to.contain(word)
+			}
+			;(CertificationManager as any).instance = undefined
+		})
+
+		it("still falls back to the name for a profile seeded before the regime field existed", () => {
+			// A profile file seeded by an older build has no `regime`, and refusing it would break a
+			// workspace that was working. The name-matching survives for exactly that case.
+			;(CertificationManager as any).instance = {
+				getActiveProfile: () => ({ standard: "ECSS" }),
+				getActiveProfileLevel: () => "CAT_C",
+			}
+			set("standard", "aerio-scs")
+			expect(resolveComplianceProfile()?.regime).to.equal("ecss")
+			;(CertificationManager as any).instance = undefined
+		})
+
 		it("falls back to DO-178C for an unrecognised regime", () => {
 			// Rather than inventing a third regime the backend has no applicability table for.
 			set("standard", "aerio-scs")
@@ -204,14 +326,29 @@ describe("resolving the compliance profile", () => {
 			// A picker offering a standard the backend does not have produces a session the route
 			// rejects, after the user has already selected it.
 			const properties = require("../../../../package.json").contributes.configuration.properties
-			expect(properties["aeriocode.compliance.standard"].enum).to.deep.equal([
-				"",
-				"aerio-scs",
-				"jf-avpp",
-				"misra-c",
-				"misra-cpp",
-				"power-of-10",
-			])
+			expect(properties["aeriocode.compliance.standard"].enum).to.deep.equal(["", "aerio-scs", "jf-avpp", "power-of-10"])
+		})
+
+		it("does not offer a withdrawn standard", () => {
+			// The MISRA packs were withdrawn from the backend registry: their guideline numbers were
+			// recollected rather than read, and MISRA's licence prohibits using the document to
+			// validate an AI tool, so they could never be confirmed. Their checks still run under
+			// aerio-scs. Leaving them in the picker would let a user select a standard every request
+			// then 404s on.
+			const properties = require("../../../../package.json").contributes.configuration.properties
+			const offered = properties["aeriocode.compliance.standard"].enum
+
+			expect(offered).to.not.include("misra-c")
+			expect(offered).to.not.include("misra-cpp")
+		})
+
+		it("describes every standard it offers", () => {
+			// An enum entry with no description shows in the settings UI as a bare id. The two lists
+			// are separate arrays matched by position, so dropping one without the other silently
+			// shifts every description onto the wrong standard.
+			const property =
+				require("../../../../package.json").contributes.configuration.properties["aeriocode.compliance.standard"]
+			expect(property.enumDescriptions).to.have.lengthOf(property.enum.length)
 		})
 
 		it("scopes every compliance setting to the resource", () => {

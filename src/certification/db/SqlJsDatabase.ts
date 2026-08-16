@@ -103,7 +103,9 @@ export class SqlJsDatabase {
 					]
 					for (const candidate of candidates) {
 						try {
-							if (require("fs").existsSync(candidate)) return candidate
+							if (require("fs").existsSync(candidate)) {
+								return candidate
+							}
 						} catch {
 							/* ignore */
 						}
@@ -254,7 +256,9 @@ export class SqlJsDatabase {
 	}
 
 	flushSync(): void {
-		if (!this.dbPath || !this.dirty) return
+		if (!this.dbPath || !this.dirty) {
+			return
+		}
 		try {
 			const data = this.db.export()
 			fs.writeFileSync(this.dbPath, Buffer.from(data))

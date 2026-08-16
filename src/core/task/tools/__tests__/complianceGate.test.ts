@@ -116,7 +116,9 @@ describe("the compliance gate", () => {
 			const host = new Host(PROFILE, async () => analysis([]))
 			const { feedback } = await runComplianceGate("a.c", "int f(void){return 0;}", ledger, host)
 
-			expect(feedback).to.contain("no mandatory findings")
+			// "outstanding", not "no mandatory findings": the same sentence is used when violations were
+			// accepted under a deviation, and there the unqualified claim would be false.
+			expect(feedback).to.contain("no outstanding mandatory findings")
 			// The model repeats this to the user, so the smaller statement is the one that has to
 			// be in the text: one file, automatically checkable rules only.
 			expect(feedback).to.contain("it is not conformance")
@@ -232,7 +234,7 @@ describe("the compliance gate", () => {
 			const { feedback, outcome } = await runComplianceGate("a.c", "x", ledger, host)
 
 			expect(outcome.mandatoryViolations).to.equal(0)
-			expect(feedback).to.contain("no mandatory findings")
+			expect(feedback).to.contain("no outstanding mandatory findings")
 		})
 
 		it("stops asking after the attempt budget, and requires the deviation be stated", async () => {
@@ -309,6 +311,96 @@ describe("the compliance gate", () => {
 
 			expect(feedback).to.equal("")
 			expect(outcome.skippedReason).to.equal("language-not-covered")
+		})
+	})
+
+	/**
+	 * Deviations: violations the programme formally accepted.
+	 *
+	 * The gate needs no rule-matching logic of its own — the backend clears `mandatory` on a deviated
+	 * finding, so repair stops for free. What the gate *does* own is telling the truth about it: a
+	 * message that reads clean over accepted violations, or one that leaves the model free to "fix"
+	 * them, are both worse than the finding being reported plainly.
+	 */
+	describe("when violations are accepted under a deviation", () => {
+		const deviated = (overrides: Partial<ComplianceFinding> = {}) =>
+			finding({
+				mandatory: false,
+				deviated: true,
+				mandatoryBeforeDeviation: true,
+				deviation: {
+					deviationId: "dev_1",
+					scope: "file",
+					rationale: "Generated from the hardware register map; the layout is fixed by silicon.",
+					approvedBy: "j.okafor@example.test",
+					approvedAt: "2026-05-01T00:00:00.000Z",
+					expiresAt: null,
+					daysUntilExpiry: null,
+				},
+				...overrides,
+			})
+
+		it("does not spend a repair turn on them", async () => {
+			// The whole point of the mechanism: a programme that formally accepted a violation must not
+			// keep being asked to fix it, or it goes back to hiding the finding in a baseline.
+			const host = new Host(PROFILE, async () => analysis([deviated()]))
+			const { feedback, outcome } = await runComplianceGate("a.c", "goto x;", ledger, host)
+
+			expect(outcome.mandatoryViolations).to.equal(0)
+			expect(outcome.attempt).to.equal(0)
+			expect(feedback).to.not.contain("Fix these now")
+		})
+
+		it("says the violations are there and accepted, not that the file is clean", async () => {
+			const host = new Host(PROFILE, async () => analysis([deviated()]))
+			const { feedback } = await runComplianceGate("a.c", "goto x;", ledger, host)
+
+			expect(feedback).to.contain("accepted under an approved deviation")
+			expect(feedback).to.contain("CTRL-1")
+			// ⚠️ Without this the model treats a waived violation as an unreported one and spends a turn
+			// undoing a decision somebody made deliberately.
+			expect(feedback).to.contain("do not fix these")
+		})
+
+		it("warns when a deviation is about to lapse", async () => {
+			// A waiver expiring turns the gate red again. Saying so while the model is still in the file
+			// is far cheaper than discovering it on a pipeline run next week.
+			const host = new Host(PROFILE, async () =>
+				analysis([
+					deviated({ deviation: { ...deviated().deviation!, expiresAt: "2026-06-10T00:00:00Z", daysUntilExpiry: 9 } }),
+				]),
+			)
+			const { feedback } = await runComplianceGate("a.c", "goto x;", ledger, host)
+
+			expect(feedback).to.contain("lapse")
+		})
+
+		it("says nothing extra when there are none", async () => {
+			// The ordinary case has to read exactly as it did before this feature existed.
+			const host = new Host(PROFILE, async () => analysis([]))
+			const { feedback, outcome } = await runComplianceGate("a.c", "int f(void){return 0;}", ledger, host)
+
+			expect(feedback).to.not.contain("deviation")
+			expect(outcome.deviatedFindings).to.equal(0)
+		})
+
+		it("records the count on the audit outcome", async () => {
+			// A gate that passed because violations were waived and one that passed because there were
+			// none must not be the same entry in the trail.
+			const host = new Host(PROFILE, async () => analysis([deviated()]))
+			await runComplianceGate("a.c", "goto x;", ledger, host)
+
+			expect(host.results[0].deviatedFindings).to.equal(1)
+			expect(host.results[0].mandatoryViolations).to.equal(0)
+		})
+
+		it("still demands repair for a violation no deviation covers", async () => {
+			const host = new Host(PROFILE, async () => analysis([deviated(), finding({ ruleId: "CTRL-12" })]))
+			const { feedback, outcome } = await runComplianceGate("a.c", "goto x;", ledger, host)
+
+			expect(outcome.mandatoryViolations).to.equal(1)
+			expect(outcome.deviatedFindings).to.equal(1)
+			expect(feedback).to.contain("CTRL-12")
 		})
 	})
 

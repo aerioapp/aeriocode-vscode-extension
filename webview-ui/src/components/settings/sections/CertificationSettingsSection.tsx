@@ -4,6 +4,8 @@ import { memo, useState } from "react"
 import { CertificationServiceClient } from "@/services/grpc-client"
 import { EmptyRequest } from "@shared/proto/aeriocode/common"
 import Section from "../Section"
+import RegimeStatusDashboard from "@/components/certification/RegimeStatusDashboard"
+import { regimeForProfileStandard } from "@shared/compliance/regimes"
 
 interface CertificationSettingsSectionProps {
 	renderSectionHeader: (tabId: string) => JSX.Element | null
@@ -14,6 +16,8 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 		certificationActive,
 		certificationProfile,
 		certificationLevel,
+		certificationVersion,
+		certificationTitle,
 		navigateToProfileSetup,
 		navigateToTraceability,
 		navigateToAuditTrail,
@@ -22,6 +26,13 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 	const [deactivating, setDeactivating] = useState(false)
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 	const [deleting, setDeleting] = useState(false)
+
+	// Which regime the active profile belongs to, from the one table that knows. ECSS and NASA each
+	// have a status view of their own shape; DO-178C's is the Annex A objective grid, which is not
+	// this component.
+	const regime = regimeForProfileStandard(certificationProfile)
+	const regimeHasStatusView = regime === "ecss" || regime === "nasa"
+	const statusViewTitle = regime === "ecss" ? "ECSS Annex R expected outputs" : "NPR 7150.2D Appendix C requirements"
 
 	const handleDeactivate = async () => {
 		setDeactivating(true)
@@ -54,19 +65,20 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 			<Section>
 				<div style={{ marginBottom: 16 }}>
 					<h4 className="text-[var(--vscode-foreground)] m-0 mb-2">Certification Mode</h4>
-					{/* ⚠️ "and other safety standards" implied a breadth this section does not have. The
-					    profiles here are DO-178C only — `ProfileSelector` says as much in a comment naming
-					    ISO 26262 as future work — while the coding-standard picker in the chat input offers
-					    ISO 26262 as a regime. A user who sees both reasonably reads the narrower screen as
-					    broken. The two are different features and the difference is worth stating. */}
+					{/* ⚠️ This said "DO-178C only", which was true when written and stopped being true the
+					    day ECSS and NASA profiles shipped — and it kept saying it, because the sentence and
+					    the profile list had no connection to each other. The breadth claim now belongs to
+					    `ProfileSelector`, which fetches the profiles; what stays here is the part that does
+					    not change, namely which artifacts follow which regime. */}
 					<p className="text-[12px] text-[var(--vscode-descriptionForeground)] m-0 mb-4">
-						Objective tables, document drafts and traceability artifacts, for DO-178C. All data stays local on your
-						system.
+						Requirements, traceability and a hash-chained audit trail, against the certification profile you activate
+						— DO-178C, ECSS or NASA NPR 7150.2. All data stays local on your system.
 					</p>
 					<p className="text-[12px] text-[var(--vscode-descriptionForeground)] m-0 mb-4">
 						This is separate from the coding standard, which is set per workspace from the shield beside the model
-						name and can be held to DO-178C or ISO 26262. Certification artifacts are DO-178C only — Aerio asserts no
-						mapping from its rules to ASILs.
+						name. Each regime is presented in the structure its own publisher uses: DO-178C in an objective table,
+						ECSS in Annex R expected outputs, NPR 7150.2 in the Appendix C requirement matrix. Every profile lists
+						what it produces and what it does not.
 					</p>
 
 					{certificationActive ? (
@@ -77,10 +89,21 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 									<span className="text-[13px] text-[var(--vscode-foreground)] font-medium">
 										Certification Active
 									</span>
+									{/* ⚠️ The document, not the publisher. This rendered `certificationProfile`
+									    alone, which was "ECSS" — a standards body with dozens of publications,
+									    several of which bear on a space software programme. A supplier could
+									    not tell from this screen whether they had been activated against
+									    ECSS-E-ST-40C or anything else, and the same held for "NASA". */}
 									<p className="text-[11px] text-[var(--vscode-descriptionForeground)] m-0 mt-1">
 										{certificationProfile}
+										{certificationVersion ? ` ${certificationVersion}` : ""}
 										{certificationLevel ? ` — ${certificationLevel}` : ""}
 									</p>
+									{certificationTitle && (
+										<p className="text-[11px] text-[var(--vscode-descriptionForeground)] m-0 mt-[2px] italic">
+											{certificationTitle}
+										</p>
+									)}
 								</div>
 							</div>
 
@@ -92,6 +115,26 @@ const CertificationSettingsSection = ({ renderSectionHeader }: CertificationSett
 									Open Audit Trail
 								</VSCodeButton>
 							</div>
+
+							{/* ⚠️ Rendered only for the regimes that have a view of their own. ECSS and NASA
+							    shipped with profiles, applicability projections and backend status endpoints
+							    and nothing in the panel that showed any of it — so a programme on either had
+							    to take on trust that anything was happening. DO-178C programmes are not sent
+							    through this: Annex A is an objective grid carrying independence marks, a third
+							    shape again, and rendering it in an expected-output table would misstate it. */}
+							{regimeHasStatusView && (
+								<details className="border border-[var(--vscode-panel-border)] rounded p-2">
+									<summary className="text-[12px] text-[var(--vscode-foreground)] cursor-pointer">
+										{statusViewTitle}
+									</summary>
+									<div className="mt-3">
+										<RegimeStatusDashboard
+											profileLevel={certificationLevel}
+											profileStandard={certificationProfile}
+										/>
+									</div>
+								</details>
+							)}
 
 							<VSCodeButton appearance="secondary" onClick={navigateToProfileSetup}>
 								Change Profile

@@ -335,6 +335,20 @@ export class EvidenceSync {
 		}
 	}
 
+	/**
+	 * The project's stable identity, minting it if this is the first call.
+	 *
+	 * ⚠️ Distinct from `status().projectKey`, which reports what is already known and is null until
+	 * something has caused a mint. A compliance check can be the very first thing a session does, and
+	 * it needs the key to ask the backend which deviations apply — reporting null there would silently
+	 * apply none and make a waived project look non-conforming.
+	 *
+	 * Minting is idempotent and local, so calling it from a read path is safe.
+	 */
+	getProjectKey(): string | null {
+		return this.ensureProjectKey()
+	}
+
 	/** Sync status for the UI. */
 	status(): { projectKey: string | null; pending: number; lastError: string | null; stopped: boolean } {
 		let lastError: string | null = null

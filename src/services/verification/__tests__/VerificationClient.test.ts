@@ -326,4 +326,124 @@ describe("VerificationClient", () => {
 			}
 		})
 	})
+
+	describe("regime status", () => {
+		it("asks for an assurance level as a path segment, not a query parameter", async () => {
+			// ⚠️ This sent `/certification/objectives?level=A`. The backend's catalog lives at
+			// `/certification/objectives` and the dashboard at `/certification/objectives/:level`, so
+			// the request matched the catalog, the query string was discarded, and the answer came back
+			// as the unfiltered objective list with no status in it. It never showed, because until the
+			// regime dashboards landed nothing called this method.
+			const { client, transport } = clientWith(ok({ level: "A", tables: [] }))
+
+			await client.objectives("A")
+
+			expect(transport.gets[0].url).to.equal(`${BASE}/api/v1/certification/objectives/A`)
+			expect(transport.gets[0].url).to.not.contain("?level=")
+		})
+
+		it("asks for ECSS expected outputs by criticality category", async () => {
+			const { client, transport } = clientWith(
+				ok({
+					document: "ECSS-E-ST-40C Rev.1",
+					publisher: "ECSS / ESA",
+					attribution: "cited as facts",
+					category: "C",
+					summary: {
+						outputsInStandard: 303,
+						applicableAtCategory: 289,
+						toBeAgreed: 18,
+						withPartialEvidence: 2,
+						withNoEvidence: 200,
+						outOfScopeForAerio: 87,
+						statement: "289 of 303 apply at criticality category C",
+					},
+					rows: [
+						{
+							id: "5.3.2.1c",
+							output: "Development strategy",
+							force: "required",
+							status: "partial",
+							contributes: "x",
+						},
+					],
+				}),
+			)
+
+			const status = await client.ecssOutputs("C", { complianceRun: true })
+
+			expect(transport.gets[0].url).to.equal(`${BASE}/api/v1/certification/ecss/outputs/C?complianceRun=true`)
+			// The Ytba count survives the client untouched. It is neither owed nor excused, and a client
+			// that folded it into either neighbour would misreport what the supplier owes.
+			expect(status.summary.toBeAgreed).to.equal(18)
+			expect(status.rows[0].force).to.equal("required")
+		})
+
+		it("asks for NASA requirements by software classification", async () => {
+			const { client, transport } = clientWith(
+				ok({
+					document: "NPR 7150.2D",
+					publisher: "NASA",
+					attribution: "cited as facts",
+					softwareClass: "F",
+					summary: {
+						requirementsInMatrix: 100,
+						applicableAtClass: 65,
+						conditional: 0,
+						withPartialEvidence: 4,
+						withNoEvidence: 43,
+						outOfScopeForAerio: 18,
+						statement: "65 of 100 apply at software classification F",
+					},
+					rows: [
+						{
+							id: "SWE-219",
+							section: "3.7.4",
+							applicable: true,
+							status: "conditional",
+							contributes: null,
+							condition: "safety-critical",
+						},
+					],
+				}),
+			)
+
+			const status = await client.nasaRequirements("F", { traceability: true })
+
+			expect(transport.gets[0].url).to.equal(`${BASE}/api/v1/certification/nasa/requirements/F?traceability=true`)
+			// The condition survives too. Reporting SWE-219 as flatly applicable would tell a project
+			// with no safety-critical software that it owes 100% MC/DC.
+			expect(status.rows[0].condition).to.equal("safety-critical")
+			expect(status.summary.conditional).to.equal(0)
+		})
+
+		it("declares no evidence when the caller states none", async () => {
+			// A dashboard is a pure function of stated inputs. An empty declaration has to produce a bare
+			// URL rather than a defaulted one, or the backend would answer a question nobody asked.
+			const { client, transport } = clientWith(ok({ summary: {}, rows: [] }))
+
+			await client.ecssOutputs("A")
+
+			expect(transport.gets[0].url).to.equal(`${BASE}/api/v1/certification/ecss/outputs/A`)
+		})
+
+		it("sends only the flags the caller states", async () => {
+			// A false flag is not sent rather than sent as false: the backend reads presence, and
+			// `structuralCoverage=false` and an absent parameter must not be able to differ.
+			const { client, transport } = clientWith(ok({ summary: {}, rows: [] }))
+
+			await client.nasaRequirements("A", { complianceRun: true, structuralCoverage: false })
+
+			expect(transport.gets[0].url).to.contain("complianceRun=true")
+			expect(transport.gets[0].url).to.not.contain("structuralCoverage")
+		})
+
+		it("escapes a level rather than pasting it into the path", async () => {
+			const { client, transport } = clientWith(ok({ summary: {}, rows: [] }))
+
+			await client.ecssOutputs("../objectives")
+
+			expect(transport.gets[0].url).to.not.contain("/../")
+		})
+	})
 })

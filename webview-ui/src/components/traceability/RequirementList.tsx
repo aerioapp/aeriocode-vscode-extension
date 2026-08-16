@@ -240,8 +240,10 @@ const RequirementList = () => {
 
 				<div className="flex flex-col gap-[4px]">
 					<label className="text-[11px] text-[var(--vscode-descriptionForeground)]">Source</label>
+					{/* Regime-neutral placeholder: this field is shown to DO-178C, ECSS and NASA projects
+					    alike, and a DO-178C clause as the worked example reads as the expected answer. */}
 					<VSCodeTextField
-						placeholder="e.g., DO-178C §5.5.1 or Safety Analysis SA-001 (optional)"
+						placeholder="e.g., a standard clause or Safety Analysis SA-001 (optional)"
 						value={formSource}
 						onInput={(e) => setFormSource((e.target as HTMLInputElement).value)}
 					/>

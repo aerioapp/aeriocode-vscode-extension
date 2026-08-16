@@ -1,5 +1,7 @@
 import * as vscode from "vscode"
 import { CertificationManager } from "@/certification/CertificationManager"
+import { COMPLIANCE_REGIMES, asRegime, levelForRegime } from "@shared/compliance/regimes"
+import type { ComplianceRegime } from "@shared/compliance/regimes"
 
 /**
  * What coding standard is in force, and at what assurance level.
@@ -24,17 +26,42 @@ import { CertificationManager } from "@/certification/CertificationManager"
  * — a wrong DAL is a claim about how much assurance the software needs.
  */
 
-/** Ids of rule packs the backend registers. Kept in sync by ComplianceClient at runtime. */
-export const KNOWN_STANDARDS = ["aerio-scs", "jf-avpp", "misra-c", "misra-cpp", "power-of-10"] as const
+/*
+ * ⚠️ `KNOWN_STANDARDS` was removed rather than updated.
+ *
+ * It listed the rule packs the backend registers, and its doc comment said it was "kept in sync by
+ * ComplianceClient at runtime" — which nothing did. No production code read it; the only reference
+ * left was a test asserting it did not name a withdrawn pack. So it was a second list of the shipped
+ * standards, maintained by hand, checked against nothing, and free to disagree with the
+ * `aeriocode.compliance.standard` enum in `package.json` that actually decides what a user can pick.
+ *
+ * The enum is the source of truth on this side and the backend registry is the authority overall.
+ * Those two are worth testing against each other, and `__tests__/ComplianceProfileResolver.test.ts`
+ * does. A third copy in the middle was only ever a place for them to drift apart quietly.
+ *
+ * `misra-c` and `misra-cpp` were withdrawn: their guideline numbers were recollected rather than
+ * read, and MISRA's licence prohibits using the document to validate an AI tool, so they could never
+ * be confirmed. Their checks still run — `aerio-scs` adopts them and reports them under rule ids
+ * Aerio authored — so a workspace that had one selected loses a rule number, not analysis. The
+ * backend answers a request for either with a 404 saying exactly that.
+ */
 
-export const DAL_LEVELS = ["A", "B", "C", "D"] as const
-export const ASIL_LEVELS = ["D", "C", "B", "A", "QM"] as const
+/**
+ * ⚠️ Regimes and their levels come from `@shared/compliance/regimes`, not from here.
+ *
+ * They were declared in this file and independently re-declared in three others, and by the time
+ * the NASA regime arrived, all three copies had drifted into user-visible wrong answers — see that
+ * module's header. Re-exported rather than re-stated so the existing call sites keep working while
+ * there is exactly one definition behind them.
+ */
+export { COMPLIANCE_REGIMES, REGIME_IDS as REGIMES, asRegime, levelForRegime } from "@shared/compliance/regimes"
+export type { ComplianceRegime } from "@shared/compliance/regimes"
 
 export interface ResolvedComplianceProfile {
 	standard: string
-	/** DAL A–D or an ASIL. Null where neither the certification profile nor the workspace set one. */
+	/** A level of {@link regime}. Null where neither the certification profile nor the workspace set one. */
 	level: string | null
-	regime: "do-178c" | "iso-26262"
+	regime: ComplianceRegime
 	/**
 	 * Where {@link level} came from, so a screen can say so rather than presenting it as a free
 	 * choice it is not.
@@ -58,15 +85,31 @@ export interface ResolvedComplianceProfile {
  * The two vocabularies differ — `DAL_A` there, `A` here — which is exactly the kind of seam where a
  * second source of truth hides.
  */
-function levelFromCertification(): { level: string; regime: "do-178c" | "iso-26262" } | null {
+function levelFromCertification(): { level: string; regime: ComplianceRegime } | null {
 	const active = CertificationManager.peekActiveProfile()
 	if (!active) {
 		return null
 	}
-	const level = active.level.replace(/^(DAL|ASIL)[_-]?/i, "").trim()
-	const regime = /26262|ASIL/i.test(active.standard + active.level) ? "iso-26262" : "do-178c"
-	const valid: readonly string[] = regime === "iso-26262" ? ASIL_LEVELS : DAL_LEVELS
-	return valid.includes(level) ? { level, regime } : null
+	const level = active.level.replace(/^(DAL|ASIL|CAT|CATEGORY|CLASS)[_-]?/i, "").trim()
+	// ⚠️ Asked, not guessed. This pattern-matched the standard's *name* to decide the regime —
+	// `/26262|ASIL/`, then `/ECSS|E-ST-40|Q-ST-80/`, then `/NPR ?7150|NASA/`, then a DO-178C
+	// fallback. Every certification profile now declares the regime it belongs to, so the guess is
+	// gone: a profile named something none of those patterns anticipated used to fall through to
+	// DO-178C and label a space programme's category a design assurance level, silently.
+	//
+	// The name-matching survives only as a fallback for a profile seeded by a build older than the
+	// `regime` field, and it is the same order as before so that case is unchanged.
+	const declared = `${active.standard} ${active.level}`
+	const regime: ComplianceRegime = active.regime
+		? asRegime(active.regime)
+		: /26262|ASIL/i.test(declared)
+			? "iso-26262"
+			: /ECSS|E-ST-40|Q-ST-80/i.test(declared)
+				? "ecss"
+				: /NPR ?7150|NASA/i.test(declared)
+					? "nasa"
+					: "do-178c"
+	return levelForRegime(regime, level) ? { level, regime } : null
 }
 
 const SECTION = "aeriocode.compliance"
@@ -93,19 +136,21 @@ export function resolveComplianceProfile(resource?: vscode.Uri): ResolvedComplia
 		return { standard, level: certified.level, regime: certified.regime, levelSource: "certification" }
 	}
 
-	const regime = config.get<string>("regime") === "iso-26262" ? "iso-26262" : "do-178c"
+	const regime = asRegime(config.get<string>("regime"))
 	const rawLevel = (config.get<string>("level") || "").trim()
 
 	// An unrecognised level is dropped rather than passed through. The backend uses it to decide
 	// which rules apply, so a typo would quietly relax the standard — and the prompt would name a
-	// level the user never chose.
-	const valid: readonly string[] = regime === "iso-26262" ? ASIL_LEVELS : DAL_LEVELS
-	const level = valid.includes(rawLevel) ? rawLevel : null
+	// level the user never chose. The settings enum offers A-F and QM in one list because VS Code
+	// cannot vary one enum by another setting, so a level from the wrong regime is a routine
+	// mistake rather than an exotic one.
+	const level = levelForRegime(regime, rawLevel)
 
 	if (rawLevel && !level) {
 		console.warn(
 			`[Aeriocode] aeriocode.compliance.level "${rawLevel}" is not valid for ${regime}; ` +
-				`expected one of ${valid.join(", ")}. Continuing with no level, which applies the standard in full.`,
+				`expected one of ${COMPLIANCE_REGIMES[regime].levels.join(", ")}. ` +
+				`Continuing with no level, which applies the standard in full.`,
 		)
 	}
 
@@ -117,7 +162,7 @@ export function describeProfile(profile: ResolvedComplianceProfile | null): stri
 	if (!profile) {
 		return "No coding standard in force"
 	}
-	const levelLabel = profile.level ? ` · ${profile.regime === "iso-26262" ? "ASIL" : "DAL"} ${profile.level}` : ""
+	const levelLabel = profile.level ? ` · ${COMPLIANCE_REGIMES[profile.regime].levelWord} ${profile.level}` : ""
 	return `${profile.standard}${levelLabel}`
 }
 

@@ -21,6 +21,8 @@ import { ProfileLoader } from "../../ProfileLoader"
 import { RequirementTagParser } from "../../RequirementTagParser"
 import { CertificationInstructionsBuilder } from "../../CertificationInstructionsBuilder"
 import { AuditTrailService } from "../../AuditTrailService"
+import { calculateEnforcement, REQUIRED_TRACEABILITY_COVERAGE } from "../../coverageEnforcement"
+import { summariseTraceability } from "../../traceabilityStatus"
 import type { CertificationProfile, RequirementRow } from "../../types"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -300,13 +302,26 @@ function helperFunction() {
 			db.insertRequirement({ requirement_id: "LLR-003", level: "low_level", title: "Range Check", dal_level: "B" })
 		})
 
-		it("calculates 0% coverage with no links", () => {
-			const totalReqs = db.getAllRequirements().length
-			const linkCounts = db.getLinkCounts()
-			const coverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+		/**
+		 * ⚠️ These called `db.getLinkCounts()` and then recomputed the percentage **in the test**,
+		 * which is why the defect underneath survived: `getLinkCounts().traced` was
+		 * `COUNT(DISTINCT artifact_path)`, a count of files, and every fixture here happened to use
+		 * exactly one distinct file per requirement. The units disagreed and the numbers agreed
+		 * anyway, so three green tests said nothing about the thing they were named for.
+		 *
+		 * They now go through `summariseTraceability`, which is what production calls. The last case
+		 * is new and is the one the old shape could not have failed: two files, one requirement.
+		 */
+		const traced = () => summariseTraceability(db.getAllRequirements(), db.getAllLinks())
+		const percent = (s: ReturnType<typeof traced>) =>
+			s.requirements > 0 ? Math.round((s.implemented / s.requirements) * 100) : 0
 
-			expect(coverage).to.equal(0)
-			expect(linkCounts.traced).to.equal(0)
+		it("calculates 0% coverage with no links", () => {
+			const summary = traced()
+
+			expect(percent(summary)).to.equal(0)
+			expect(summary.implemented).to.equal(0)
+			expect(summary.unimplementedRequirementIds).to.have.length(3)
 		})
 
 		it("calculates 33% coverage with 1 of 3 requirements linked", () => {
@@ -318,12 +333,10 @@ function helperFunction() {
 				confidence: "auto",
 			})
 
-			const totalReqs = db.getAllRequirements().length
-			const linkCounts = db.getLinkCounts()
-			const coverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+			const summary = traced()
 
-			expect(coverage).to.equal(33)
-			expect(linkCounts.traced).to.equal(1)
+			expect(percent(summary)).to.equal(33)
+			expect(summary.implemented).to.equal(1)
 		})
 
 		it("calculates 100% coverage with all requirements linked", () => {
@@ -337,12 +350,45 @@ function helperFunction() {
 				})
 			}
 
-			const totalReqs = db.getAllRequirements().length
-			const linkCounts = db.getLinkCounts()
-			const coverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+			const summary = traced()
 
-			expect(coverage).to.equal(100)
-			expect(linkCounts.traced).to.equal(3)
+			expect(percent(summary)).to.equal(100)
+			expect(summary.implemented).to.equal(3)
+		})
+
+		it("counts requirements rather than files when one requirement spans several", () => {
+			// The case the file count got wrong: 1 of 3 requirements implemented, across two files.
+			// The old `COUNT(DISTINCT artifact_path)` returned 2 here and reported 67%.
+			for (const path of ["src/sensor.c", "src/sensor_aux.c"]) {
+				db.insertTraceLink({
+					requirement_id: "SYS-001",
+					artifact_type: "source_code",
+					artifact_path: path,
+					link_type: "implements",
+					confidence: "auto",
+				})
+			}
+
+			const summary = traced()
+
+			expect(summary.implemented).to.equal(1)
+			expect(percent(summary)).to.equal(33)
+		})
+
+		it("does not count a document link as implementing code", () => {
+			// A design note attached to a requirement used to make it read as fully covered.
+			db.insertTraceLink({
+				requirement_id: "SYS-001",
+				artifact_type: "document",
+				artifact_path: "docs/design.md",
+				link_type: "implements",
+				confidence: "auto",
+			})
+
+			const summary = traced()
+
+			expect(summary.implemented).to.equal(0)
+			expect(summary.unimplementedRequirementIds).to.include("SYS-001")
 		})
 
 		it("enforces DAL A requirement (100% statement coverage)", () => {
@@ -355,16 +401,24 @@ function helperFunction() {
 				confidence: "auto",
 			})
 
-			const totalReqs = db.getAllRequirements().length
-			const linkCounts = db.getLinkCounts()
-			const coveragePercent = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
+			const summary = traced()
 
-			const levelConfig = profile.levels["DAL_A"]
-			const requiredCoverage = levelConfig.statement_coverage
-			const passed = coveragePercent >= requiredCoverage
+			// ⚠️ This compared the traceability percentage against `levelConfig.statement_coverage`,
+			// which is the exact defect `coverageEnforcement.ts` was written to remove: a DAL A project
+			// with every requirement linked and no tests at all came out "passed" against a structural
+			// metric nothing had measured. Production stopped doing it; this test went on encoding it,
+			// and only widening `statement_coverage` to a union surfaced that.
+			//
+			// It now asserts through the shipping function, against traceability — the thing the data
+			// here can actually settle.
+			const enforcement = calculateEnforcement(profile, "DAL_A", summary.requirements, summary.implemented)
 
-			expect(passed).to.be.false
-			expect(coveragePercent).to.be.lessThan(requiredCoverage)
+			expect(enforcement).to.not.equal(null)
+			expect(enforcement!.traceability_passed).to.be.false
+			expect(enforcement!.traceability_coverage).to.be.lessThan(REQUIRED_TRACEABILITY_COVERAGE)
+			// And structural coverage stays unmeasured rather than being inferred from traceability.
+			expect(enforcement!.structural_coverage_available).to.be.false
+			expect(enforcement!.structural_coverage).to.equal(null)
 		})
 	})
 
@@ -415,9 +469,16 @@ function helperFunction() {
 		})
 
 		it("includes safety coding rules from profile", () => {
+			// ⚠️ Asserted "power-of-10" until this file started running. The DO-178C profile's
+			// `safety_coding_rules` moved to `aerio-scs` — Power of 10 is ten rules, far short of what
+			// §11.8(a)-(e) asks a code standard to define — and this went on naming the old pack,
+			// because the suite it lives in was excluded from the compiler and unmatched by the test
+			// runner's glob. Read from the profile rather than restated, so the next such move cannot
+			// leave a literal behind.
 			const requirements = db.getAllRequirements()
 			const instructions = CertificationInstructionsBuilder.build(profile, requirements)
-			expect(instructions).to.include("power-of-10")
+			expect(profile.safety_coding_rules).to.equal("aerio-scs")
+			expect(instructions).to.include(profile.safety_coding_rules!)
 		})
 
 		it("includes level context", () => {
@@ -604,10 +665,8 @@ function handleSensorFailure(error, context) {
 			}
 
 			// 5. Check coverage
-			const totalReqs = db.getAllRequirements().length
-			const linkCounts = db.getLinkCounts()
-			const coverage = totalReqs > 0 ? Math.round((linkCounts.traced / totalReqs) * 100) : 0
-			expect(coverage).to.equal(100)
+			const summary = summariseTraceability(db.getAllRequirements(), db.getAllLinks())
+			expect(summary.implemented).to.equal(summary.requirements)
 
 			// 6. Generate AI instructions for next generation
 			const instructions = CertificationInstructionsBuilder.build(profile, db.getAllRequirements())

@@ -1,7 +1,26 @@
+/* eslint-disable eslint-rules/no-direct-vscode-api -- the host bridge cannot serve this call site.
+ *
+ * ⚠️ An earlier version of this banner claimed this controller was "registered on the VS Code
+ * protobus only". **That was false**, and the check behind it was bad: it grepped
+ * `src/generated/hosts/vscode/` and stopped. This handler is registered on **both** hosts —
+ * `src/generated/hosts/standalone/protobus-server-setup.ts` registers it too.
+ *
+ * The direct `vscode` use is still intended, for a reason that survives that correction. A
+ * folder-scoped `getConfiguration` needs the workspace folder's own `Uri`;
+ * `HostProvider.workspace.getWorkspacePaths` returns `fsPath` **strings**, and rebuilding a `Uri`
+ * from one with `Uri.file()` would force the `file:` scheme and break remote and virtual
+ * workspaces. There is no bridge call that returns what this needs.
+ *
+ * Under the standalone host this degrades rather than throwing, which was checked in the built
+ * shim rather than assumed: `vscode.workspace.getConfiguration` is implemented there against an
+ * in-memory store, and `vscode.workspace.workspaceFolders` is absent — which the optional chaining
+ * below already handles, reporting `canPersist: false`.
+ */
 import * as vscode from "vscode"
 import { Controller } from ".."
 import { ComplianceProfileResponse, SetComplianceProfileRequest } from "../../../shared/proto/aeriocode/compliance"
-import { ASIL_LEVELS, DAL_LEVELS, resolveComplianceProfile } from "@/services/compliance/ComplianceProfileResolver"
+import { resolveComplianceProfile } from "@/services/compliance/ComplianceProfileResolver"
+import { asRegime, levelForRegime } from "@shared/compliance/regimes"
 
 /**
  * Set the standard and level for the workspace.
@@ -39,14 +58,17 @@ export async function setComplianceProfile(
 
 	const config = vscode.workspace.getConfiguration("aeriocode.compliance", folder.uri)
 	const standard = (request.standard || "").trim()
-	const regime = request.regime === "iso-26262" ? "iso-26262" : "do-178c"
+	// ⚠️ Every regime this build knows, not a two-way branch. This read
+	// `request.regime === "iso-26262" ? "iso-26262" : "do-178c"`, so **ECSS was silently rewritten to
+	// DO-178C on the way to disk** — a user who set it by hand in settings.json had it replaced with
+	// an airborne classification they never made, the next time they touched anything in the picker.
+	// The picker could not offer ECSS either, so nothing revealed it.
+	const regime = asRegime(request.regime)
 
 	// A level from the wrong regime is dropped here as well as in the resolver. The resolver would
 	// drop it on read anyway, but storing it would leave the settings file asserting something the
 	// product does not honour, which is the kind of quiet disagreement this module exists to avoid.
-	const valid: readonly string[] = regime === "iso-26262" ? ASIL_LEVELS : DAL_LEVELS
-	const rawLevel = (request.level || "").trim()
-	const level = valid.includes(rawLevel) ? rawLevel : ""
+	const level = levelForRegime(regime, request.level) ?? ""
 
 	const target = vscode.ConfigurationTarget.WorkspaceFolder
 	await config.update("standard", standard, target)

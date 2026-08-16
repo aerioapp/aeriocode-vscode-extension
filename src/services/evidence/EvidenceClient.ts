@@ -11,6 +11,47 @@ import { AuthService } from "@/services/auth/AuthService"
  * chain the client could forge.
  */
 
+/**
+ * A deviation as the client sends it: what to waive and why, never whether it is approved.
+ *
+ * ⚠️ `status` is deliberately absent. The server always records a raised deviation as `proposed`
+ * whatever a client claims, because a client able to post an approved one could waive its own
+ * findings — so sending the field would only create the impression it did something.
+ */
+export interface DeviationRequest {
+	/** Optional: the server derives it from what the deviation covers when omitted. */
+	deviationId?: string
+	standard: string
+	ruleId: string
+	scope: "finding" | "file" | "rule"
+	file?: string | null
+	fingerprint?: string | null
+	rationale: string
+	/** Required for a project-wide (`rule`) deviation; optional for narrower ones. */
+	expiresAt?: string | null
+}
+
+export interface DeviationRecord {
+	deviationId: string
+	standard: string
+	ruleId: string
+	scope: "finding" | "file" | "rule"
+	file: string | null
+	fingerprint: string | null
+	rationale: string
+	status: "proposed" | "approved" | "rejected" | "revoked"
+	raisedBy: string | null
+	raisedAt: string | null
+	approvedBy: string | null
+	approvedAt: string | null
+	expiresAt: string | null
+	decidedBy: string | null
+	decidedAt: string | null
+	decisionReason: string | null
+	/** True when the approval was entered from the account that raised it. Shown, never hidden. */
+	sameAccount: boolean
+}
+
 export interface EvidenceEntry {
 	eventType: string
 	eventAction: string
@@ -205,6 +246,63 @@ export class EvidenceClient {
 				unsignedEntries?: number
 				verificationKey: string | null
 			}>(payload)
+		} catch (error) {
+			return EvidenceClient.describeFailure(error)
+		}
+	}
+
+	/**
+	 * Raise a deviation against a finding. It lands as `proposed` and waives nothing until decided.
+	 */
+	async raiseDeviation(projectKey: string, deviation: DeviationRequest | Omit<DeviationRequest, "deviationId">) {
+		try {
+			const token = await this.requireToken()
+			const payload = await this.transport.post<unknown>(
+				`${this.baseUrl}/projects/${encodeURIComponent(projectKey)}/deviations`,
+				{ deviation },
+				token,
+			)
+			return EvidenceClient.unwrap<{ deviation: Record<string, unknown> }>(payload).deviation
+		} catch (error) {
+			return EvidenceClient.describeFailure(error)
+		}
+	}
+
+	/**
+	 * Approve, reject or revoke.
+	 *
+	 * `approvedBy` names the authority accepting the risk and is required to approve — the server
+	 * refuses a record that names the raiser, and refuses one that names nobody.
+	 */
+	async decideDeviation(
+		projectKey: string,
+		deviationId: string,
+		decision: "approved" | "rejected" | "revoked",
+		options: { approvedBy?: string; reason?: string; expiresAt?: string } = {},
+	) {
+		try {
+			const token = await this.requireToken()
+			const payload = await this.transport.post<unknown>(
+				`${this.baseUrl}/projects/${encodeURIComponent(projectKey)}/deviations/${encodeURIComponent(deviationId)}/decision`,
+				{ decision, ...options },
+				token,
+			)
+			return EvidenceClient.unwrap<{ deviation: Record<string, unknown> }>(payload).deviation
+		} catch (error) {
+			return EvidenceClient.describeFailure(error)
+		}
+	}
+
+	/** Every deviation for the project, newest first. */
+	async listDeviations(projectKey: string, status?: DeviationRecord["status"]) {
+		try {
+			const token = await this.requireToken()
+			const query = status ? `?status=${encodeURIComponent(status)}` : ""
+			const payload = await this.transport.get<unknown>(
+				`${this.baseUrl}/projects/${encodeURIComponent(projectKey)}/deviations${query}`,
+				token,
+			)
+			return EvidenceClient.unwrap<{ deviations: DeviationRecord[] }>(payload).deviations
 		} catch (error) {
 			return EvidenceClient.describeFailure(error)
 		}

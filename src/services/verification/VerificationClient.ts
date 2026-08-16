@@ -222,6 +222,88 @@ export interface QualificationKit {
 	summary: { requirements: number; verified: number; failed: number; notVerified: number; statement: string }
 }
 
+// --- Regime status ---------------------------------------------------------------------------
+
+/**
+ * What the caller states it holds.
+ *
+ * ⚠️ Stated, not discovered. Every regime dashboard is a pure function of these flags, which is what
+ * lets a programme ask "what would change if we had trace data" without producing any. It also means
+ * a caller that hardcodes them to `true` is not asking a question, it is asserting an answer — so the
+ * controller derives them from the project database rather than declaring them here.
+ *
+ * Absent is false. There is no "unknown": a dashboard that reported evidence as indeterminate would
+ * be the one thing worse than reporting it as absent.
+ */
+export interface DeclaredEvidence {
+	complianceRun?: boolean
+	traceability?: boolean
+	configurationIndex?: boolean
+	auditTrail?: boolean
+	structuralCoverage?: boolean
+}
+
+/** The flags the three regime dashboards accept, as a query string. Empty when nothing is declared. */
+function evidenceQuery(evidence: DeclaredEvidence): string {
+	const set = Object.entries(evidence).filter(([, held]) => held === true)
+	return set.length > 0 ? `?${set.map(([flag]) => `${flag}=true`).join("&")}` : ""
+}
+
+/** One row of the ECSS Annex R applicability table, with what Aerio holds against it. */
+export interface EcssOutputRow {
+	id: string
+	output: string
+	/** `required`, `to-be-agreed` or `not-applicable` — never a boolean. Ytba is its own state. */
+	force: string
+	status: string
+	contributes: string | null
+}
+
+export interface EcssOutputStatus {
+	document: string
+	publisher: string
+	attribution: string
+	category: string
+	summary: {
+		outputsInStandard: number
+		applicableAtCategory: number
+		toBeAgreed: number
+		withPartialEvidence: number
+		withNoEvidence: number
+		outOfScopeForAerio: number
+		statement: string
+	}
+	rows: EcssOutputRow[]
+}
+
+/** One row of the NPR 7150.2D Appendix C matrix, with what Aerio holds against it. */
+export interface NasaRequirementRow {
+	id: string
+	section: string
+	applicable: boolean
+	status: string
+	contributes: string | null
+	/** Set where the requirement gates on the safety-critical determination Appendix C does not record. */
+	condition: string | null
+}
+
+export interface NasaRequirementStatus {
+	document: string
+	publisher: string
+	attribution: string
+	softwareClass: string
+	summary: {
+		requirementsInMatrix: number
+		applicableAtClass: number
+		conditional: number
+		withPartialEvidence: number
+		withNoEvidence: number
+		outOfScopeForAerio: number
+		statement: string
+	}
+	rows: NasaRequirementRow[]
+}
+
 /**
  * Minimal transport seam. Production uses axios; tests supply a stub so the unit suite never opens
  * a socket and stays green in CI where no backend exists.
@@ -592,15 +674,58 @@ export class VerificationClient {
 		}
 	}
 
-	/** The Annex A objective status for an assurance level. No objective is ever reported satisfied. */
-	async objectives(level: string): Promise<unknown> {
+	/**
+	 * The Annex A objective status for an assurance level. No objective is ever reported satisfied.
+	 *
+	 * ⚠️ The level is a **path segment**, not a query parameter. This sent
+	 * `/certification/objectives?level=A`, and the backend's catalog route is
+	 * `GET /certification/objectives` with the dashboard at `/certification/objectives/:level` — so
+	 * the request matched the catalog, the query string was discarded, and the answer came back as
+	 * the unfiltered objective list with no status in it at all. It never showed, because nothing
+	 * called this method.
+	 */
+	async objectives(level: string, evidence: DeclaredEvidence = {}): Promise<unknown> {
 		const token = await this.requireToken()
 		try {
 			const payload = await this.transport.get<unknown>(
-				`${this.apiRoot}/certification/objectives?level=${encodeURIComponent(level)}`,
+				`${this.apiRoot}/certification/objectives/${encodeURIComponent(level)}${evidenceQuery(evidence)}`,
 				token,
 			)
 			return VerificationClient.unwrap<unknown>(payload)
+		} catch (error) {
+			VerificationClient.describeFailure(error)
+		}
+	}
+
+	/**
+	 * ECSS Annex R expected-output status for one software criticality category.
+	 *
+	 * A separate method from {@link nasaRequirements} rather than one `regimeStatus(regime, level)`,
+	 * for the reason the two responses are separate messages: the shapes differ where it matters.
+	 * ECSS reports `toBeAgreed`, NASA reports `conditional`, and neither has the other's field.
+	 */
+	async ecssOutputs(category: string, evidence: DeclaredEvidence = {}): Promise<EcssOutputStatus> {
+		const token = await this.requireToken()
+		try {
+			const payload = await this.transport.get<unknown>(
+				`${this.apiRoot}/certification/ecss/outputs/${encodeURIComponent(category)}${evidenceQuery(evidence)}`,
+				token,
+			)
+			return VerificationClient.unwrap<EcssOutputStatus>(payload)
+		} catch (error) {
+			VerificationClient.describeFailure(error)
+		}
+	}
+
+	/** NPR 7150.2D Appendix C requirement status for one software classification. */
+	async nasaRequirements(softwareClass: string, evidence: DeclaredEvidence = {}): Promise<NasaRequirementStatus> {
+		const token = await this.requireToken()
+		try {
+			const payload = await this.transport.get<unknown>(
+				`${this.apiRoot}/certification/nasa/requirements/${encodeURIComponent(softwareClass)}${evidenceQuery(evidence)}`,
+				token,
+			)
+			return VerificationClient.unwrap<NasaRequirementStatus>(payload)
 		} catch (error) {
 			VerificationClient.describeFailure(error)
 		}

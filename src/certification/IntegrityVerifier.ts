@@ -48,7 +48,9 @@ export class IntegrityVerifier {
 		const row = db.prepare("SELECT * FROM integrity_check ORDER BY id DESC LIMIT 1").get() as
 			{ passed: number; check_at: string; total_entries: number } | undefined
 
-		if (!row) return null
+		if (!row) {
+			return null
+		}
 
 		return {
 			passed: row.passed === 1,

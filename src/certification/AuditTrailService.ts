@@ -154,7 +154,9 @@ export class AuditTrailService {
 		for (const entry of entries) {
 			const row = headers.map((h) => {
 				const val = entry[h as keyof AuditTrailRow]
-				if (val === null || val === undefined) return ""
+				if (val === null || val === undefined) {
+					return ""
+				}
 				const str = String(val)
 				// Escape CSV: wrap in quotes if contains comma, quote, or newline
 				if (str.includes(",") || str.includes('"') || str.includes("\n")) {

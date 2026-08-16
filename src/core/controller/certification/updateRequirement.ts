@@ -6,7 +6,9 @@ import { CertificationManager } from "@/certification"
 export async function updateRequirement(_controller: Controller, request: UpdateRequirementRequest): Promise<Empty> {
 	const certManager = CertificationManager.getInstance()
 	const db = certManager.getProjectDb()
-	if (!db) throw new Error("Certification not active")
+	if (!db) {
+		throw new Error("Certification not active")
+	}
 	db.updateRequirement(request.requirementId, {
 		title: request.title || undefined,
 		description: request.description || undefined,

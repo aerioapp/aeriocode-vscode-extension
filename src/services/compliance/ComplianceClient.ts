@@ -1,7 +1,12 @@
 import axios from "axios"
 import { aeriocodeEnvConfig } from "@/config"
 import { AuthService } from "@/services/auth/AuthService"
-import { type ComplianceAuditContext, recordComplianceAutofix, recordComplianceCheck } from "./ComplianceAudit"
+import {
+	type ComplianceAuditContext,
+	recordComplianceAutofix,
+	recordComplianceCheck,
+	resolveComplianceProjectKey,
+} from "./ComplianceAudit"
 
 /**
  * Client for the Aeriocode backend compliance API.
@@ -37,6 +42,39 @@ export interface ComplianceFinding {
 		section: string | null
 	}
 	evidence?: Record<string, unknown> | null
+	/**
+	 * Set when an approved deviation covers this finding.
+	 *
+	 * ⚠️ The finding is **still here**, and still describes a real violation — only `mandatory` was
+	 * cleared so a gate stops demanding repair. Anything presenting findings must keep showing it, or
+	 * the UI becomes a clean view over non-conforming code, which is exactly what the deviation record
+	 * exists to prevent.
+	 */
+	deviated?: boolean
+	deviation?: FindingDeviation | null
+	/** What `mandatory` was before the deviation cleared it. */
+	mandatoryBeforeDeviation?: boolean
+	/**
+	 * The server's identity for this violation, stable under reindentation and line movement.
+	 *
+	 * ⚠️ Never recompute this client-side. It commits to the normalized source between byte offsets
+	 * the client does not receive, so an approximation would agree most of the time and diverge
+	 * exactly when whitespace or encoding differed — producing a deviation that saves and then
+	 * silently matches nothing. Optional because a backend older than this extension does not send it.
+	 */
+	fingerprint?: string
+}
+
+/** The waiver covering a finding: who accepted the risk, why, and until when. */
+export interface FindingDeviation {
+	deviationId: string
+	scope: "finding" | "file" | "rule"
+	rationale: string
+	approvedBy: string | null
+	approvedAt: string | null
+	expiresAt: string | null
+	/** Null when the deviation never lapses. Negative is not possible — an expired one is not applied. */
+	daysUntilExpiry: number | null
 }
 
 export interface ComplianceSummary {
@@ -52,6 +90,9 @@ export interface ComplianceSummary {
 	rulesViolated: number
 	violatedRuleIds: string[]
 	mandatoryViolations: number
+	/** Present only when deviations applied: what `mandatoryViolations` was before they did. */
+	mandatoryViolationsBeforeDeviations?: number
+	deviatedFindings?: number
 	mandatoryClean: boolean
 	coverage: {
 		rulesInStandard: number
@@ -305,7 +346,14 @@ export class ComplianceClient {
 		let result: AnalyzeResult
 		try {
 			const token = await this.requireToken()
-			const payload = await this.transport.post<unknown>(`${this.baseUrl}/${standard}/analyze`, { files }, token)
+			// The project key, never the deviations themselves — see the resolver's note. Omitted from
+			// the body entirely when there is no project, so a scratch-file check costs no lookup.
+			const projectKey = resolveComplianceProjectKey()
+			const payload = await this.transport.post<unknown>(
+				`${this.baseUrl}/${standard}/analyze`,
+				projectKey ? { files, projectKey } : { files },
+				token,
+			)
 			result = ComplianceClient.unwrap<AnalyzeResult>(payload)
 		} catch (error) {
 			return ComplianceClient.describeFailure(error)

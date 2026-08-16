@@ -3,6 +3,7 @@ import Tooltip from "@/components/common/Tooltip"
 import { ComplianceServiceClient } from "@/services/grpc-client"
 import { EmptyRequest } from "@shared/proto/aeriocode/common"
 import { ComplianceProfileResponse, ComplianceStandard, SetComplianceProfileRequest } from "@shared/proto/aeriocode/compliance"
+import { COMPLIANCE_REGIMES, asRegime, selectableRegimes } from "@shared/compliance/regimes"
 import { VSCodeButton, VSCodeCheckbox, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
 import React, { useEffect, useRef, useState } from "react"
 import { useClickAway, useWindowSize } from "react-use"
@@ -22,9 +23,6 @@ import { useClickAway, useWindowSize } from "react-use"
  * The standards list comes from the backend rather than a constant here, so a newly published pack
  * appears without an extension release — the same reason `ComplianceService` is standard-agnostic.
  */
-
-const DAL_LEVELS = ["A", "B", "C", "D"]
-const ASIL_LEVELS = ["D", "C", "B", "A", "QM"]
 
 const ComplianceProfileToggle: React.FC = () => {
 	const [isVisible, setIsVisible] = useState(false)
@@ -87,9 +85,12 @@ const ComplianceProfileToggle: React.FC = () => {
 			.catch((error) => console.error("Failed to set the compliance profile:", error))
 	}
 
-	const regime = profile?.regime || "do-178c"
-	const levels = regime === "iso-26262" ? ASIL_LEVELS : DAL_LEVELS
-	const levelLabel = regime === "iso-26262" ? "ASIL" : "DAL"
+	// ⚠️ Every regime the build knows, from one definition. This offered DO-178C and ISO 26262 only,
+	// so **ECSS could not be selected here at all** despite shipping with a full applicability
+	// projection — and the writer behind it collapsed anything that was not ISO 26262 to DO-178C, so
+	// setting it by hand in settings.json was undone the next time this popover wrote anything.
+	const regime = asRegime(profile?.regime)
+	const { levels, levelWord: levelLabel, caveat } = COMPLIANCE_REGIMES[regime]
 	const active = Boolean(profile?.standard)
 	// A level declared through certification setup is not editable here; it is shown, with its source.
 	const fromCertification = profile?.levelSource === "certification"
@@ -223,21 +224,28 @@ const ComplianceProfileToggle: React.FC = () => {
 									onChange={(e: any) => apply({ regime: e.target.value, level: "" })}
 									className="w-full"
 									style={{ width: "100%", minWidth: 0 }}>
-									<VSCodeOption value="do-178c">DO-178C — airborne</VSCodeOption>
-									<VSCodeOption value="iso-26262">ISO 26262 — road vehicles</VSCodeOption>
+									{/* ⚠️ Offered regimes, plus the stored one if it is no longer offered. ISO 26262
+									    is recognised and not offered: Aerio holds no copy of it, so its applicability
+									    map is declared-empty and selecting it would change nothing observable —
+									    listing it beside three regimes that do carry a projection would read as
+									    support. Passing the current value in is what stops a project already
+									    configured for it seeing the dropdown quietly show something else. */}
+									{selectableRegimes(profile?.regime).map((id) => (
+										<VSCodeOption key={id} value={id}>
+											{COMPLIANCE_REGIMES[id].label}
+										</VSCodeOption>
+									))}
 								</VSCodeDropdown>
-								{/* ⚠️ Selecting ISO 26262 does strictly less than DO-178C, and saying so is the
-								    difference between a limitation and a surprise. Aerio holds no copy of ISO
-								    26262 and asserts no mapping from these rules to ASILs, so the applicability
-								    map ships declared-empty rather than guessed — the same discipline as
-								    `pending-source-verification` on the MISRA packs. The certification module is
-								    DO-178C only, which the user sees as an inconsistency between two screens
-								    unless the narrower one explains itself. */}
-								{regime === "iso-26262" && (
+								{/* ⚠️ Where a regime does something a user would not expect, it says so here — from
+								    the regime definition rather than from a branch, so a regime added later cannot
+								    ship without one. Each is a real surprise rather than a disclaimer: ISO 26262
+								    grades nothing because Aerio holds no copy and asserts no ASIL mapping; NASA has
+								    six classifications that are not one severity ladder and one class the standard
+								    does not reach; and the certification module is DO-178C only, which reads as two
+								    screens disagreeing unless the narrower one explains itself. */}
+								{caveat && (
 									<div className="text-xs text-[var(--vscode-descriptionForeground)] mt-1 break-words">
-										ASIL applicability is not yet determined, so the standard is applied in full rather than
-										graded by level. Certification artifacts — objective tables, document drafts — are DO-178C
-										only.
+										{caveat}
 									</div>
 								)}
 							</div>

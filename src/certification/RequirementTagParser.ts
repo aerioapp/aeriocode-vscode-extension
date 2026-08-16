@@ -39,7 +39,9 @@ export class RequirementTagParser {
 				const reqId = match[1]
 				const description = match[2]?.trim() || ""
 
-				if (!reqId) continue
+				if (!reqId) {
+					continue
+				}
 
 				// Check next lines for DAL and safety annotations
 				let level: string | undefined

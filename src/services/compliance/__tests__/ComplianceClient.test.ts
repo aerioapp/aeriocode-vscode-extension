@@ -75,6 +75,57 @@ function makeAnalyzeResponse(overrides: Partial<AnalyzeResult> = {}) {
 }
 
 describe("ComplianceClient", () => {
+	/**
+	 * The project key: what tells the backend which deviations apply.
+	 *
+	 * ⚠️ The negative assertion here is the important one. Deviations are never sent from the client —
+	 * a caller able to post them could waive its own findings in the request that produces the signed
+	 * report about them — so this pins that only the *key* travels.
+	 */
+	describe("naming the project so deviations can be applied", () => {
+		const { setComplianceProjectKeyResolver } = require("../ComplianceAudit")
+
+		afterEach(() => setComplianceProjectKeyResolver(null))
+
+		it("omits the key entirely when there is no project", async () => {
+			// A scratch-file check must not make the backend pay for a project lookup.
+			setComplianceProjectKeyResolver(() => null)
+			const transport = new StubTransport(() => makeAnalyzeResponse())
+			const client = new ComplianceClient(transport, BASE, token)
+
+			await client.analyze("jf-avpp", [{ path: "a.cpp", content: "void f(){}" }])
+
+			expect(transport.calls[0].body).to.not.have.property("projectKey")
+		})
+
+		it("sends the key, and only the key", async () => {
+			setComplianceProjectKeyResolver(() => "proj-abc")
+			const transport = new StubTransport(() => makeAnalyzeResponse())
+			const client = new ComplianceClient(transport, BASE, token)
+
+			await client.analyze("jf-avpp", [{ path: "a.cpp", content: "void f(){}" }])
+
+			const body = transport.calls[0].body as Record<string, unknown>
+			expect(body.projectKey).to.equal("proj-abc")
+			expect(body).to.not.have.property("deviations")
+		})
+
+		it("a resolver that throws does not fail the analysis", async () => {
+			// Evidence is optional; a compliance check is not. A broken resolver means no deviations,
+			// which is the stricter result, and never a failed run.
+			setComplianceProjectKeyResolver(() => {
+				throw new Error("database not open")
+			})
+			const transport = new StubTransport(() => makeAnalyzeResponse())
+			const client = new ComplianceClient(transport, BASE, token)
+
+			const result = await client.analyze("jf-avpp", [{ path: "a.cpp", content: "void f(){}" }])
+
+			expect(result.findings).to.be.an("array")
+			expect(transport.calls[0].body).to.not.have.property("projectKey")
+		})
+	})
+
 	describe("request construction", () => {
 		it("posts to the standard-scoped analyze endpoint", async () => {
 			const transport = new StubTransport(() => makeAnalyzeResponse())

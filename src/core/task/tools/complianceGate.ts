@@ -91,6 +91,14 @@ export interface GateOutcome {
 	totalFindings: number
 	ruleIds: string[]
 	exhausted: boolean
+	/**
+	 * Violations present in this file that an approved deviation covers.
+	 *
+	 * Recorded on the outcome because `recordGateResult` writes the audit trail: a gate that passed
+	 * because violations were waived and a gate that passed because there were none must not be the
+	 * same entry. That distinction is the one an auditor reads the trail for.
+	 */
+	deviatedFindings: number
 	/** Present when the gate could not run. The write still succeeded. */
 	skippedReason?: string
 }
@@ -163,10 +171,53 @@ function signatureOf(content: string): string {
 	return content.replace(/\s+/g, "")
 }
 
-/** Mandatory findings are the ones worth a turn. Advisory ones are reported, never repaired. */
+/**
+ * Mandatory findings are the ones worth a turn. Advisory ones are reported, never repaired.
+ *
+ * A deviated finding is not among them, and needs no special case here: the backend clears
+ * `mandatory` when an approved deviation covers it, precisely so that every consumer stops
+ * demanding repair without each having to learn what a deviation is.
+ */
 function mandatoryFindings(result: AnalyzeResult): ComplianceFinding[] {
 	return (result.findings || []).filter((finding) => finding.mandatory)
 }
+
+/** Violations present and accepted under an approved deviation. Reported, never repaired. */
+function deviatedFindings(result: AnalyzeResult): ComplianceFinding[] {
+	return (result.findings || []).filter((finding) => finding.deviated === true)
+}
+
+/**
+ * What to add to the gate's message about violations somebody accepted.
+ *
+ * ⚠️ Empty string when there are none, so the ordinary case reads exactly as it did before. When
+ * there are some, the model is told **and told not to fix them** — without that it treats a waived
+ * violation as an unreported one and spends a turn re-fixing what the programme decided to keep.
+ */
+function describeDeviations(deviated: ComplianceFinding[]): string {
+	if (deviated.length === 0) {
+		return ""
+	}
+
+	const expiring = deviated
+		.map((finding) => finding.deviation)
+		.filter((deviation): deviation is NonNullable<typeof deviation> => Boolean(deviation))
+		.filter((deviation) => deviation.daysUntilExpiry !== null && deviation.daysUntilExpiry <= EXPIRY_WARNING_DAYS)
+
+	const rules = [...new Set(deviated.map((finding) => finding.ruleId))].join(", ")
+	const expiryNote =
+		expiring.length > 0
+			? ` ${expiring.length} of them lapse(s) within ${EXPIRY_WARNING_DAYS} days and will start failing the gate again.`
+			: ""
+
+	return (
+		` ${deviated.length} violation(s) are present and accepted under an approved deviation (${rules}) — ` +
+		`do not fix these, they were decided on deliberately.${expiryNote}`
+	)
+}
+
+/** Mirrors the backend's own warning window, so the two do not disagree about what "soon" means. */
+const EXPIRY_WARNING_DAYS = 14
 
 function describeFinding(finding: ComplianceFinding): string {
 	const where = `line ${finding.line}`
@@ -208,6 +259,7 @@ export async function runComplianceGate(
 		totalFindings: 0,
 		ruleIds: [],
 		exhausted: false,
+		deviatedFindings: 0,
 	}
 
 	if (!profile || !profile.standard) {
@@ -244,6 +296,7 @@ export async function runComplianceGate(
 	}
 
 	const mandatory = mandatoryFindings(result)
+	const deviated = deviatedFindings(result)
 	const attempt = mandatory.length > 0 ? ledger.record(relPath, content) : 0
 	const nowViolated = [...new Set(mandatory.map((finding) => finding.ruleId))]
 	// Read before the ledger is updated: these are the rules the last attempt violated and this one
@@ -262,6 +315,7 @@ export async function runComplianceGate(
 		totalFindings: result.summary.totalFindings,
 		ruleIds: [...new Set(mandatory.map((finding) => finding.ruleId))],
 		exhausted: attempt > MAX_REPAIR_ATTEMPTS,
+		deviatedFindings: deviated.length,
 	}
 	host.recordGateResult(outcome)
 
@@ -271,8 +325,9 @@ export async function runComplianceGate(
 		// about to repeat whatever it is told here to the user.
 		return {
 			feedback:
-				`\n\nCompliance gate: ${relPath} has no mandatory findings against ${profile.standard}. ` +
-				`This covers only the automatically checkable rules for this one file — it is not conformance.`,
+				`\n\nCompliance gate: ${relPath} has no outstanding mandatory findings against ${profile.standard}.` +
+				describeDeviations(deviated) +
+				` This covers only the automatically checkable rules for this one file — it is not conformance.`,
 			outcome,
 		}
 	}

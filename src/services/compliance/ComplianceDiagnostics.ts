@@ -13,7 +13,8 @@ import { ComplianceApiError, ComplianceClient, type AnalyzeResult, type Complian
  * file myself" flow, and it works regardless of which model is selected.
  */
 
-const DIAGNOSTIC_SOURCE = "Aeriocode compliance"
+/** Exported so the deviation code action can tell our diagnostics from every other provider's. */
+export const DIAGNOSTIC_SOURCE = "Aeriocode compliance"
 
 /**
  * Mandatory rules ("shall", "will" and their negations) are errors; advisory "should"
@@ -56,6 +57,19 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 
 	private readonly client: ComplianceClient
 
+	/**
+	 * The findings behind the diagnostics currently shown, by file.
+	 *
+	 * ⚠️ Kept because a `vscode.Diagnostic` cannot carry one. Raising a deviation needs the rule id,
+	 * the standard, and the server's fingerprint for the violation — and a Diagnostic has room for a
+	 * code and a message, so reconstructing a finding from what the Problems panel holds is not
+	 * possible. Rebuilding it by re-running the analysis would be a second call whose result could
+	 * differ from what the user is looking at.
+	 *
+	 * Cleared alongside the collection, so it can never outlive the diagnostics it describes.
+	 */
+	private readonly findingsByPath = new Map<string, ComplianceFinding[]>()
+
 	// Explicit assignment rather than a parameter property — see ComplianceClient.ts.
 	constructor(client: ComplianceClient = ComplianceClient.getInstance()) {
 		this.client = client
@@ -90,6 +104,7 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 			uri,
 			result.findings.map((finding) => toDiagnostic(finding)),
 		)
+		this.findingsByPath.set(uri.fsPath, result.findings)
 	}
 
 	/**
@@ -106,7 +121,18 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 				uri,
 				findings.map((finding) => toDiagnostic(finding)),
 			)
+			this.findingsByPath.set(absolutePath, findings)
 		}
+	}
+
+	/**
+	 * The findings behind the diagnostics shown for a file, or an empty list.
+	 *
+	 * Empty means "nothing published for this file", never "this file is clean" — the two are
+	 * indistinguishable here and a caller must not read the second from the first.
+	 */
+	findingsFor(absolutePath: string): ComplianceFinding[] {
+		return this.findingsByPath.get(absolutePath) ?? []
 	}
 
 	/**
@@ -213,8 +239,12 @@ export class ComplianceDiagnostics implements vscode.Disposable {
 	clear(uri?: vscode.Uri): void {
 		if (uri) {
 			this.collection.delete(uri)
+			this.findingsByPath.delete(uri.fsPath)
 		} else {
 			this.collection.clear()
+			// ⚠️ Cleared with the collection, never separately. Retained findings that outlived their
+			// diagnostics would let a deviation be raised against a violation nobody can see any more.
+			this.findingsByPath.clear()
 		}
 	}
 }

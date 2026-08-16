@@ -111,6 +111,9 @@ export const workspace = {
 	getWorkspaceFolders: () => [],
 	onDidChangeConfiguration: () => ({ dispose: () => {} }),
 	onDidSaveTextDocument: () => ({ dispose: () => {} }),
+	// `TraceabilityChecker` subscribes to both; without the close listener its constructor throws
+	// and seven of its tests fail before reaching an assertion.
+	onDidCloseTextDocument: () => ({ dispose: () => {} }),
 	onDidCreateFiles: () => ({ dispose: () => {} }),
 	onDidDeleteFiles: () => ({ dispose: () => {} }),
 	onDidRenameFiles: () => ({ dispose: () => {} }),
@@ -161,11 +164,28 @@ export class Position {
 	) {}
 }
 
+/**
+ * ⚠️ Both real overloads. This accepted only `(Position, Position)`, while the API also takes
+ * `(startLine, startChar, endLine, endChar)` — and production code uses the numeric form
+ * (`ComplianceDiagnostics.toDiagnostic`, for one). Under the old mock that call produced a Range
+ * whose `start` was the number `14` rather than a Position, so `range.start.line` was `undefined`
+ * and any assertion about a diagnostic's position quietly compared undefined to undefined.
+ */
 export class Range {
-	constructor(
-		public start: Position,
-		public end: Position,
-	) {}
+	public start: Position
+	public end: Position
+
+	constructor(startLine: number, startCharacter: number, endLine: number, endCharacter: number)
+	constructor(start: Position, end: Position)
+	constructor(a: Position | number, b: Position | number, c?: number, d?: number) {
+		if (typeof a === "number") {
+			this.start = new Position(a, b as number)
+			this.end = new Position(c as number, d as number)
+		} else {
+			this.start = a
+			this.end = b as Position
+		}
+	}
 }
 
 export class Selection extends Range {
@@ -190,10 +210,38 @@ export class Diagnostic {
 	) {}
 }
 
+/**
+ * Enough of `CodeActionKind` to define a provider under test. The real type is a class whose
+ * instances carry a dotted `value` and support `contains`/`append`; a provider only ever hands these
+ * back to VS Code, so identity is all a test needs to assert on.
+ */
+export class CodeActionKind {
+	static readonly Empty = new CodeActionKind("")
+	static readonly QuickFix = new CodeActionKind("quickfix")
+	static readonly Refactor = new CodeActionKind("refactor")
+	static readonly RefactorExtract = new CodeActionKind("refactor.extract")
+	static readonly RefactorRewrite = new CodeActionKind("refactor.rewrite")
+
+	constructor(public readonly value: string) {}
+}
+
+export class CodeAction {
+	command?: { command: string; title: string; arguments?: unknown[] }
+	isPreferred?: boolean
+	diagnostics?: Diagnostic[]
+
+	constructor(
+		public title: string,
+		public kind?: CodeActionKind,
+	) {}
+}
+
 export class EventEmitter {
 	private listeners: Array<(...args: unknown[]) => void> = []
 	fire(data?: unknown) {
-		for (const listener of this.listeners) listener(data)
+		for (const listener of this.listeners) {
+			listener(data)
+		}
 	}
 	event = (listener: (...args: unknown[]) => void) => {
 		this.listeners.push(listener)
@@ -236,12 +284,30 @@ export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 }
 
 export const OverviewRulerLane = { Left: 1, Center: 2, Right: 3, Full: 4 }
 
+/**
+ * `vscode.languages`.
+ *
+ * ⚠️ Reconstructed after being deleted by a careless `git checkout` of this file — the diff looked
+ * like formatting churn and was not, which is the second time in this session that assumption cost
+ * work. Seven `TraceabilityChecker` tests fail without it, because that class takes its diagnostic
+ * collection from `languages`, not from `window`.
+ *
+ * The three members are exactly the `vscode.languages.*` calls the source makes; a mock wider than
+ * that would let a test pass against an API the product does not use.
+ */
+export const languages = {
+	createDiagnosticCollection: (_name?: string) => mockDiagnosticCollection,
+	getDiagnostics: (_uri?: unknown) => [],
+	registerCodeActionsProvider: (_selector?: unknown, _provider?: unknown, _meta?: unknown) => ({ dispose: () => {} }),
+}
+
 export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 }
 
 // Default export for `import vscode from "vscode"` style
 export default {
 	window,
 	workspace,
+	languages,
 	env,
 	Uri,
 	ExtensionMode,
@@ -251,6 +317,8 @@ export default {
 	TextEdit,
 	DiagnosticSeverity,
 	Diagnostic,
+	CodeActionKind,
+	CodeAction,
 	EventEmitter,
 	CancellationTokenSource,
 	StatusBarAlignment,

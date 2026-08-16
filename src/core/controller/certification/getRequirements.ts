@@ -6,7 +6,9 @@ import { CertificationManager } from "@/certification"
 export async function getRequirements(_controller: Controller, _request: EmptyRequest): Promise<RequirementsResponse> {
 	const certManager = CertificationManager.getInstance()
 	const db = certManager.getProjectDb()
-	if (!db) return RequirementsResponse.create({ requirements: [] })
+	if (!db) {
+		return RequirementsResponse.create({ requirements: [] })
+	}
 	const reqs = db.getAllRequirements()
 	return RequirementsResponse.create({
 		requirements: reqs.map((r) =>

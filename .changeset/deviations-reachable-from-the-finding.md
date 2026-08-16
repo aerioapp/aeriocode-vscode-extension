@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Make deviations reachable from the violation, instead of only from the command palette.

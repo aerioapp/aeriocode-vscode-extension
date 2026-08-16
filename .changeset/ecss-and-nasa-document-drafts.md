@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Draft ECSS and NASA deliverables, not just DO-178C's.

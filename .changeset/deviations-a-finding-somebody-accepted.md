@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Record a finding somebody decided to accept, instead of hiding it in a baseline.

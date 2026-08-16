@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Add the NASA software classification regime, and make every assurance regime selectable.

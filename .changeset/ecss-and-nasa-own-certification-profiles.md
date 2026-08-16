@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Give ECSS and NASA certification profiles of their own, built from their own documents.

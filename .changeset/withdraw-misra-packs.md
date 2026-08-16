@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Withdraw the MISRA C and MISRA C++ rule packs.

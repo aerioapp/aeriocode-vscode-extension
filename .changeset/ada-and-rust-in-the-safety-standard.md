@@ -1,5 +1,5 @@
 ---
-"Aerio-Code": minor
+"Aerio-Code": patch
 ---
 
 Check Ada and Rust against the Aerio Safety Coding Standard.

@@ -20,17 +20,38 @@ import net from "node:net"
  * Node 20+ has `autoSelectFamily`. VS Code bundles its own undici and does not, which is what made
  * this look like a server fault from inside the extension and a working server from a terminal.
  */
+/**
+ * Resolve a name, or null when this machine has no answer for it.
+ *
+ * ⚠️ `code.localhost` resolves on a developer machine running the cluster and does **not** resolve on
+ * a CI runner, where the name exists nowhere. That is an absent precondition rather than a failure:
+ * these tests describe what the resolver does with a name that has both families, and a machine that
+ * cannot resolve it at all has nothing to say about that. Returning null lets the caller skip, which
+ * is what the connect probe below already does when the cluster is not up.
+ */
+async function lookupOrNull(host: string, options: dns.LookupAllOptions): Promise<dns.LookupAddress[] | null> {
+	return new Promise((resolve, reject) => {
+		dns.lookup(host, options, (error, result) => {
+			if (error) {
+				const code = (error as NodeJS.ErrnoException).code
+				return code === "ENOTFOUND" || code === "EAI_AGAIN" ? resolve(null) : reject(error)
+			}
+			resolve(result)
+		})
+	})
+}
+
 describe("resolving a local cluster host", () => {
-	it("puts IPv6 first for a .localhost name unless the order is set", async () => {
+	it("puts IPv6 first for a .localhost name unless the order is set", async function () {
 		// The precondition for the whole failure. If this ever stops being true the bug is gone, but
 		// so is the reason for the fix, and someone should find out which.
-		const addresses = await new Promise<dns.LookupAddress[]>((resolve, reject) => {
-			// ⚠️ `verbatim: true` is Node's own default since v17 — spelled out because the entire
-			// point is that the resolver's order is honoured rather than reordered.
-			dns.lookup("code.localhost", { all: true, verbatim: true }, (error, result) =>
-				error ? reject(error) : resolve(result),
-			)
-		})
+		//
+		// `verbatim: true` is Node's own default since v17 — spelled out because the entire point is
+		// that the resolver's order is honoured rather than reordered.
+		const addresses = await lookupOrNull("code.localhost", { all: true, verbatim: true })
+		if (!addresses) {
+			return this.skip()
+		}
 
 		const families = addresses.map((a) => a.family)
 		expect(families, "code.localhost should resolve to both families").to.include(4)
@@ -70,18 +91,23 @@ describe("resolving a local cluster host", () => {
 		expect(v6, "IPv6 on an IPv4-only kind binding should hang, not refuse").to.not.equal("connected")
 	})
 
-	it("prefers IPv4 once the result order is set, which is what activate() does", async () => {
+	it("prefers IPv4 once the result order is set, which is what activate() does", async function () {
 		const previous = dns.getDefaultResultOrder?.()
+		let addresses: dns.LookupAddress[] | null
 		try {
 			dns.setDefaultResultOrder("ipv4first")
-			const addresses = await new Promise<dns.LookupAddress[]>((resolve, reject) => {
-				dns.lookup("code.localhost", { all: true }, (error, result) => (error ? reject(error) : resolve(result)))
-			})
-			expect(addresses[0].family, "ipv4first should put the reachable address first").to.equal(4)
+			addresses = await lookupOrNull("code.localhost", { all: true })
 		} finally {
+			// Restored before the skip, so a machine that cannot resolve the name does not leave the
+			// process-wide resolver order changed for every test that runs after this one.
 			if (previous) {
 				dns.setDefaultResultOrder(previous)
 			}
 		}
+
+		if (!addresses) {
+			return this.skip()
+		}
+		expect(addresses[0].family, "ipv4first should put the reachable address first").to.equal(4)
 	})
 })

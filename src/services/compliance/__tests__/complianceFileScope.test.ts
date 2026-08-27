@@ -22,10 +22,22 @@ describe("extensionsForLanguages", () => {
 		expect(extensions.filter((entry) => entry === ".h")).to.have.length(1)
 	})
 
+	it("maps ada to the spec and body extensions the backend grammar accepts", () => {
+		const extensions = extensionsForLanguages(["ada"])
+
+		for (const expected of [".ads", ".adb", ".ada"]) {
+			expect(extensions, `missing ${expected}`).to.include(expected)
+		}
+	})
+
+	it("maps rust to the extension the backend grammar accepts", () => {
+		expect(extensionsForLanguages(["rust"])).to.deep.equal([".rs"])
+	})
+
 	it("returns nothing for a language it does not know", () => {
 		// Matching everything would offer files the backend can only skip, which reads to
 		// the user as "checked" when nothing was checked.
-		expect(extensionsForLanguages(["ada"])).to.deep.equal([])
+		expect(extensionsForLanguages(["cobol"])).to.deep.equal([])
 		expect(extensionsForLanguages([])).to.deep.equal([])
 	})
 })

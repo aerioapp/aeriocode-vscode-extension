@@ -18,6 +18,11 @@ const CPP_EXTENSIONS = [".c", ".h", ".hh", ".hpp", ".hxx", ".cc", ".cpp", ".cxx"
 const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
 	c: [".c", ".h"],
 	cpp: CPP_EXTENSIONS,
+	// Ada: a spec and a body are different files and both are analysed. `.ads` is the package
+	// or subprogram specification, `.adb` the body; GNAT also emits `.ada` for single-unit
+	// sources. Kept in step with core/parser.js.
+	ada: [".ads", ".adb", ".ada"],
+	rust: [".rs"],
 }
 
 /** Mirrors the caps in the backend's compliance routes. */

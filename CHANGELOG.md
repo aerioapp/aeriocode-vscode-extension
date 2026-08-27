@@ -1,5 +1,104 @@
 # Changelog
 
+## 0.0.8
+
+- 732fc34: Check Ada and Rust against the Aerio Safety Coding Standard.
+
+The engine parsed C and C++ and nothing else, which ruled out the two languages a safety-critical
+programme is most likely to arrive with: Ada, which much European space flight software is written
+in, and Rust, which much new work is starting in.
+
+Both are now checked. Rules that need a type model are reported as not evaluated on Ada and Rust
+rather than guessed at, and every run states which rules it did not evaluate, so a pass on one of
+these languages is never mistaken for a pass on all of them.
+
+- 732fc34: Add ECSS-E-ST-40C and NPR 7150.2D certification profiles.
+
+DO-178C is no longer the only regime. A programme can now activate an ECSS or a NASA profile, each
+with its own level vocabulary — design assurance level, software criticality category, software
+classification — and its own obligation structure and document set.
+
+No mapping is asserted between the three. All of them letter their levels from A, and they do not
+mean the same thing by it: an ECSS criticality category depends on whether a compensating provision
+exists outside the software, and a NASA classification follows the kind of mission and runs to F on
+a separate axis. Each profile is presented in the structure its own publisher uses, and states what
+Aerio does not produce for it in that regime's own terms.
+
+- 732fc34: Draft the document set each regime defines.
+
+ECSS programmes get drafts of the sixteen DRDs from Annexes B–P and T. NASA programmes get drafts of
+the work products described in NASA-HDBK-2203. Software assurance deliverables are not drafted —
+their required structure is shown, but they belong to the assurance organisation.
+
+- 732fc34: Record a violation somebody decided to accept.
+
+A mandatory finding that cannot be cleared previously had two options, and both were poor: ship a
+failing pipeline, or freeze the violation into a baseline that carries no rationale, no approver and
+no review date.
+
+A deviation is the record that somebody decided to accept it. It carries a rationale, a named
+approving authority and, for the widest scope, a review date. Scope is one violation, one rule in a
+file, or one rule across the project.
+
+A deviated finding stays in the report. Only its mandatory flag is cleared, so a gate stops asking
+for repair while the report still shows the violation and who accepted it. The conformance verdict
+says so in its own sentence rather than in a footnote.
+
+- 732fc34: Raise a deviation from the lightbulb on the finding.
+
+Raising and reviewing were reachable only from the command palette, which is where you go for
+something you already know the name of. Raising is now a lightbulb action on the finding itself,
+beside the repair actions — the two honest answers to a violation sit together.
+
+Offered only on mandatory findings that no approved deviation already covers. Each entry names the
+rule it would waive, and adds the line when one rule fires more than once in view.
+
+Reviewing remains a separate command. An approve button beside a rationale somebody has just written
+invites the self-approval the record exists to rule out.
+
+- 732fc34: Withdraw the MISRA rule packs.
+
+`misra-c` and `misra-cpp` are no longer selectable. Their guideline numbering could not be confirmed
+against the published standards, and findings filed under a number nobody can vouch for are worse
+than findings filed under Aerio's own.
+
+The checks did not go anywhere. The Aerio Safety Coding Standard adopts them and reports them under
+identifiers Aerio wrote and can stand behind. If you license MISRA yourself, supply your own rule
+mapping per request and findings come back carrying your guideline numbers.
+
+- 732fc34: Name the standard a profile is of, rather than its publisher.
+
+The picker offered "ECSS" and "NASA" — a standards body with dozens of publications, and an agency
+that publishes several software standards binding different parties. A supplier could not tell which
+document their project had been activated against. Profiles are now named for the document.
+
+- 732fc34: Count requirements in traceability coverage.
+
+Traceability coverage was summed as an average of percentages, so a requirement with one linked
+function counted the same as one with forty. Coverage is now the proportion of requirements that are
+traced.
+
+- 732fc34: Fix audit trail verification.
+
+Verification could report a valid chain as broken for some accounts. Identifiers are now handled
+consistently between the point an entry is recorded and the point it is checked.
+
+Entries recorded before this release keep their original values and will not verify. There is no
+migration for that, and none is possible. Verification did not previously succeed for the affected
+accounts, so no previously working result is lost.
+
+- 732fc34: Cite the active regime, or no regime at all.
+
+Untraced-function warnings cited a DO-178C clause regardless of which profile was active, so ECSS
+and NASA projects were shown a clause that does not govern them. All three regimes require
+requirements-to-code traceability and number it differently; the warning now cites none rather than
+one that may be wrong.
+
+- 732fc34: Resolve local cluster hosts on IPv4 first.
+
+A backend running on a local cluster could take the full connect timeout before answering, because
+the address tried first had nothing listening and the packets were dropped rather than refused.
+
 ## 0.0.7
 
 - ed8b6a5: Set the coding standard from the chat input, and show when none is set.
@@ -109,57 +208,33 @@ limit, because being cut off is not the model's error.
 - d2efbf3: calibrate input token counts when using anthropic models of sap ai core provider
 
 ## [0.0.6]
-
-### Compliance Checking
-
 - **JF-AV++ compliance checking** — Check C++ against the JF-AV++ coding standard (2RDU00001 Rev C) from the new Compliance panel, from the command palette ("Aeriocode: Check Compliance"), or against the active file. Findings carry the rule id, severity, line, and the rule's own text and rationale. Requires a signed-in Aerio account.
 - **Findings in the Problems panel** — Violations are published as diagnostics, so they appear inline in the editor and in Problems alongside the rest of your tooling. Mandatory ("shall" / "will") rules are reported as errors and advisory ("should") rules as warnings, which makes the Problems error count the number of things that actually block conformance.
 - **Tiered autofix** — Mechanical fixes are split in two. _Safe_ fixes are fully determined by the syntax and cannot change behaviour: literal and hexadecimal casing, adding braces, comment style, include notation, octal constants. _Review_ fixes are mechanically correct but carry semantic risk — `#define` to `const`, C-style cast to `static_cast`, splitting multi-variable declarations — and are applied only when you ask for them explicitly. Nothing is written until you choose a tier, and fixes land in the editor's undo stack.
 - **The assistant can check its own work** — In JF-AV++ mode the assistant can run the compliance check on the C++ it just wrote and correct violations before presenting the result. Analysis is read-only and auto-approvable; autofix is not, and is unavailable in Plan mode.
 - **Coverage is always stated** — Every result reports how many rules were checked automatically and how many need human review, so a clean run over a subset of the standard is never presented as full conformance.
-
-### UI
-
 - **Compliance & Certification menu** — Traceability and Audit Trail move into a single sidebar submenu alongside the new compliance check, rather than each taking a top-level slot.
 - **Jump to a finding** — Selecting a finding opens the file with the cursor on the offending line.
 
 ## [0.0.5]
-
-### Bug Fixes
-
 - **Fixed LLM closing tag leak in write_to_file** -- Parser now correctly handles mismatched closing tags (e.g. wrong XML tags instead of correct ones) that caused stray XML tags to appear in written files.
 - **Added fallback for alternative opening tags** -- Parser gracefully handles cases where the LLM uses wrong parameter tags for the content parameter.
 - **Added ToolExecutor safety net** -- Trailing XML closing tags are now stripped from file content before writing.
 - **Added system prompt tag format clarification** -- System prompt now explicitly warns that closing tags must match opening tags exactly.
 
 ## [0.0.4]
-
-### Certification System
-
 - **Profile-driven certification** — Certification levels, tags, and safety coding rules are now driven by the active DO-178C profile configuration.
 - **AI awareness of requirements** — Certification requirement instructions are injected into the AI's system prompt, making the AI aware of active requirements, tag formats, and safety coding rules.
 - **DAL-aware coverage enforcement** — Coverage enforcement now uses the profile's configured coverage metric and threshold, with pass/fail feedback in certification status.
 - **Impact analysis** — New gRPC handler for analyzing which files, test files, and dependent requirements are affected by a requirement change.
 - **Fixed requirement tag parser** — Tags like `SYS-001` and `REQ-SYS-001` are now consistently captured as full IDs, fixing mismatch issues.
 - **Fixed coverage calculation** — Coverage now counts distinct traced requirements instead of distinct files, giving accurate coverage percentages.
-
-### Profile Management
-
 - **Deactivation/deletion separation** — Deactivating a profile removes `profile.json` and closes the database without deleting data. Deleting project data is a separate irreversible action with confirmation dialog.
 - **Intentionally deactivated guard** — Prevents the extension from re-activating a profile that was explicitly deactivated by the user.
-
-### UI Improvements
-
 - **Rationale and Source fields** — Add Requirement form now includes rationale and source fields alongside title and description.
 - **Updated tag placeholders** — Requirement tag input now shows `e.g., SYS-001 or HLR-42` with helper text about exact matching.
-
-### Documentation
-
 - **Certification docs** — New professional documentation covering certification overview, traceability workflow, and audit trail features.
 - **Fixed docs routing** — Ingress `/docs` path now correctly routes to the frontend service.
-
-### Bug Fixes
-
 - Fixed VS Code mock infrastructure for unit testing (198 tests passing).
 - Fixed Logger resilience with HostProvider fallback for non-VS Code environments.
 - Fixed WASM path resolution for sql.js database initialization.
